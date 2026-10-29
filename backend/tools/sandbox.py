@@ -109,10 +109,27 @@ def resolve_workspace_path(path: str, task_id: Optional[str] = None, owner_id: O
     ws = get_workspace_dir(task_id, owner_id=owner_id)
     p = Path(path_str)
 
-    if p.is_absolute():
-        resolved = p.resolve()
-    else:
-        resolved = (ws / p).resolve()
+    target_unresolved = p if p.is_absolute() else (ws / p)
+
+    # Check unresolved path components for symlinks or reparse points
+    curr = target_unresolved
+    while True:
+        try:
+            if curr.is_symlink() or os.path.islink(curr):
+                raise PermissionError(f"Symlinks and junctions are strictly forbidden: '{path_str}'")
+            if os.name == "nt" and curr.exists():
+                attrs = os.lstat(curr).st_file_attributes
+                if attrs & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+                    raise PermissionError(f"Symlinks and junctions are strictly forbidden: '{path_str}'")
+        except PermissionError:
+            raise
+        except Exception:
+            pass
+        if curr == ws or curr.parent == curr:
+            break
+        curr = curr.parent
+
+    resolved = target_unresolved.resolve()
 
     # Recheck containment AFTER resolution
     try:
@@ -122,8 +139,22 @@ def resolve_workspace_path(path: str, task_id: Optional[str] = None, owner_id: O
             f"Path traversal rejected: '{path_str}' resolves outside task workspace boundary."
         )
 
-    # Reject symlinks and junctions
-    if resolved.exists() and is_reparse_or_symlink(resolved):
-        raise PermissionError(f"Symlinks and junctions are strictly forbidden: '{path_str}'")
+    # Check resolved path components for symlinks or reparse points
+    curr = resolved
+    while True:
+        try:
+            if curr.is_symlink() or os.path.islink(curr):
+                raise PermissionError(f"Symlinks and junctions are strictly forbidden: '{path_str}'")
+            if os.name == "nt" and curr.exists():
+                attrs = os.lstat(curr).st_file_attributes
+                if attrs & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+                    raise PermissionError(f"Symlinks and junctions are strictly forbidden: '{path_str}'")
+        except PermissionError:
+            raise
+        except Exception:
+            pass
+        if curr == ws or curr.parent == curr:
+            break
+        curr = curr.parent
 
     return resolved

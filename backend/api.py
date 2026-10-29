@@ -20,7 +20,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from backend.db import (
+    check_and_init_data_dirs,
     delete_owner_space,
+    get_data_dir_status,
     get_db_path,
     get_llm_metrics,
     get_owner_egress_logs,
@@ -45,10 +47,16 @@ from backend.tools.sandbox import delete_owner_workspace, resolve_workspace_path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = PROJECT_ROOT / "web"
 
+# Startup check: verify database and workspace directory writability or fallback
+check_and_init_data_dirs()
+
 app = FastAPI(
     title="Saha API",
     description="Persistent, private, drift-resilient personal AI ledger server.",
     version="1.1.0",
+    docs_url=None if is_public_mode() else "/docs",
+    redoc_url=None if is_public_mode() else "/redoc",
+    openapi_url=None if is_public_mode() else "/openapi.json",
 )
 
 app.add_middleware(
@@ -57,6 +65,46 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
 )
+
+
+@app.middleware("http")
+async def public_mode_security_middleware(request: Request, call_next):
+    """Enforce token authentication and endpoint restrictions in public mode."""
+    path = request.url.path
+    method = request.method.upper()
+
+    if is_public_mode():
+        # 1. Disable /docs, /redoc, /openapi.json in public mode
+        if path in ("/docs", "/redoc", "/openapi.json"):
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+        # 2. Allow GET /health
+        if method == "GET" and path == "/health":
+            return await call_next(request)
+
+        # 3. Allow static UI files and pairing page load
+        if method == "GET" and (
+            path in ("/", "/index.html", "/favicon.ico")
+            or path.startswith("/assets/")
+            or path.startswith("/static/")
+        ):
+            return await call_next(request)
+
+        # 4. Allow CORS preflight OPTIONS requests
+        if method == "OPTIONS":
+            return await call_next(request)
+
+        # 5. Require valid X-Saha-Owner header (minimum 32 characters)
+        token = request.headers.get("X-Saha-Owner", "").strip()
+        if not token or len(token) < 32:
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "detail": "Unauthorized: Valid X-Saha-Owner header (minimum 32 characters) required in public mode."
+                },
+            )
+
+    return await call_next(request)
 
 
 @app.exception_handler(Exception)
@@ -90,8 +138,15 @@ def is_demo_mode() -> bool:
 def get_owner_info(request: Request) -> Tuple[str, str]:
     """Extract owner token and hashed owner_id from request header X-Saha-Owner."""
     raw_token = request.headers.get("X-Saha-Owner", "").strip()
-    if not raw_token:
-        raw_token = "default-anonymous-owner"
+    if is_public_mode():
+        if not raw_token or len(raw_token) < 32:
+            raise HTTPException(
+                status_code=401,
+                detail="Unauthorized: Valid X-Saha-Owner header (minimum 32 characters) required in public mode.",
+            )
+    else:
+        if not raw_token:
+            raw_token = "default-anonymous-owner"
     owner_id = hash_owner_token(raw_token)
     return raw_token, owner_id
 
@@ -134,11 +189,15 @@ class ApproveActionRequest(BaseModel):
 
 @app.get("/health")
 def health() -> Dict[str, Any]:
+    data_status = get_data_dir_status()
     return {
         "status": "ok",
         "service": "Saha",
         "public_mode": is_public_mode(),
         "demo_mode": is_demo_mode(),
+        "data_dir_ok": data_status["data_dir_ok"],
+        "data_persistent": data_status["data_persistent"],
+        "data_dir": data_status["effective_data_dir"],
     }
 
 
@@ -215,25 +274,45 @@ def list_approvals(request: Request, status: Optional[str] = None) -> Dict[str, 
 
 @app.post("/approvals/{approval_id}/approve")
 def approve_step(approval_id: str, request: Request, body: Optional[ApproveActionRequest] = None) -> Dict[str, Any]:
-    """Approve a blocked step, re-queue to pending, and optionally update policy."""
+    """Approve a blocked step, re-queue to pending, resume execution in background, and optionally update policy."""
     _, owner_id = get_owner_info(request)
     always_allow = body.always_allow if body else False
     try:
         res = approve_request(approval_id, owner_id=owner_id, always_allow=always_allow)
-        return res
     except ValueError:
         raise HTTPException(status_code=404, detail="Approval not found")
+
+    task_id = res.get("task_id")
+    if task_id:
+        task = Ledger.get_task(task_id, owner_id=owner_id)
+        if task:
+            # Guard against double-start
+            if task.status != "running":
+                Ledger.update_task_status(task_id, "running")
+                db_path = str(get_db_path())
+                threading.Thread(target=run_task, args=(task_id, db_path), daemon=True).start()
+                res["task_status"] = "running"
+            else:
+                res["task_status"] = "already_running"
+
+    return res
 
 
 @app.post("/approvals/{approval_id}/deny")
 def deny_step(approval_id: str, request: Request) -> Dict[str, Any]:
-    """Deny a blocked step and mark it failed."""
+    """Deny a blocked step and mark it and the task failed."""
     _, owner_id = get_owner_info(request)
     try:
         res = deny_request(approval_id, owner_id=owner_id)
-        return res
     except ValueError:
         raise HTTPException(status_code=404, detail="Approval not found")
+
+    task_id = res.get("task_id")
+    if task_id:
+        Ledger.update_task_status(task_id, "failed")
+        res["task_status"] = "failed"
+
+    return res
 
 
 # -------------------------------------------------------------------------

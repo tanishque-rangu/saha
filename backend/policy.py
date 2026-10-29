@@ -242,7 +242,13 @@ def approve_request(
                 pass
         set_owner_policy(owner_id, policy, db_path=db_path)
 
-    return {"status": "approved", "approval_id": approval_id, "step_id": step_id, "always_allow": always_allow}
+    return {
+        "status": "approved",
+        "approval_id": approval_id,
+        "step_id": step_id,
+        "task_id": row["task_id"],
+        "always_allow": always_allow,
+    }
 
 
 def deny_request(
@@ -275,4 +281,9 @@ def deny_request(
             (step_id,),
         )
 
-    return {"status": "denied", "approval_id": approval_id, "step_id": step_id}
+    return {
+        "status": "denied",
+        "approval_id": approval_id,
+        "step_id": step_id,
+        "task_id": row["task_id"],
+    }

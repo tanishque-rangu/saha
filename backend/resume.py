@@ -58,6 +58,7 @@ def _generate_fast_explanation_worker(
         f"Do NOT guess a cause."
     )
     try:
+        safe_probe = re.sub(r"[^A-Za-z0-9._-]", "_", str(probe_name))[:64]
         raw_expl = call_llm(
             model=FAST_MODEL,
             messages=[{"role": "user", "content": fast_prompt}],
@@ -66,7 +67,7 @@ def _generate_fast_explanation_worker(
             max_tokens=150,
             timeout=15.0,
             owner_id=owner_id,
-            context_tags=["role:fast", f"probe:{probe_name}", f"event:{event_id}"],
+            context_tags=["role:fast", f"probe:{safe_probe}"],
             db_path=db_path,
         ).strip()
         explanation = clean_fast_explanation(raw_expl)

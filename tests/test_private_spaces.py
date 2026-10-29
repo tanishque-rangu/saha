@@ -294,9 +294,9 @@ def test_approval_always_allow_updates_policy(client):
     updated_pol = client.get("/policy", headers=headers).json()["policy"]
     assert "api.weather.gov" in updated_pol["allowed_domains"]
 
-    # Step is re-queued as pending
+    # Step is re-queued and auto-resumed by background executor
     step_requeued = client.get(f"/tasks/{task.id}", headers=headers).json()["steps"][0]
-    assert step_requeued["status"] == "pending"
+    assert step_requeued["status"] in ("pending", "running", "verified")
 
 
 # =========================================================================
@@ -379,8 +379,8 @@ def test_rate_limits_per_owner_and_ip(client, monkeypatch):
     IP_POST_HISTORY.clear()
     OWNER_POST_HISTORY.clear()
 
-    token_a = "token_rate_limit_a"
-    token_b = "token_rate_limit_b"
+    token_a = "token_rate_limit_a_0123456789abcdef"
+    token_b = "token_rate_limit_b_0123456789abcdef"
     headers_a = {"X-Saha-Owner": token_a}
     headers_b = {"X-Saha-Owner": token_b}
 

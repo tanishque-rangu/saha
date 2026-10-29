@@ -197,7 +197,7 @@ docker run -d \
   saha:latest
 ```
 
-The container runs as non-root user `appuser:appgroup` (UID 10001) and includes an automated healthcheck on `/health`.
+The container runs as non-root user `appuser:appgroup` (UID 10001) and includes an automated healthcheck on `/health`. Note that any mounted host volume bound to `/data` must be writable by UID 10001 (`chown -R 10001:10001 /path/to/host/data`).
 
 ---
 

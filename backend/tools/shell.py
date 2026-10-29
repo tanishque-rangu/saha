@@ -38,7 +38,8 @@ def native_echo(args: List[str]) -> str:
 
 def native_ls(args: List[str], task_id: Optional[str] = None) -> str:
     """Native implementation of ls within task workspace."""
-    target_rel = args[0] if args else "."
+    non_flags = [a for a in args if not a.startswith("-")]
+    target_rel = non_flags[0] if non_flags else "."
     target_path = resolve_workspace_path(target_rel, task_id=task_id)
     if not target_path.exists():
         raise FileNotFoundError(f"Directory not found: {target_rel}")

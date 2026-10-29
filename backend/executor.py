@@ -11,6 +11,8 @@ Enforces fundamental ledger and role invariants:
 
 import json
 import os
+import re
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from backend.db import get_db, get_task_owner_id
@@ -99,13 +101,14 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
                     f"{content_brief}\n\n"
                     f"Output strictly the file content. Do not include introductory remarks or conversational filler."
                 )
+                safe_file = re.sub(r"[^A-Za-z0-9._-]", "_", Path(path).name)[:64]
                 generated_content = call_llm(
                     model=WORKER_MODEL,
                     messages=[{"role": "user", "content": worker_prompt}],
                     role="worker",
                     temperature=0.0,
                     owner_id=owner_id,
-                    context_tags=["role:worker", "tool:write_file", f"task:{task_id}"],
+                    context_tags=["role:worker", f"step:{step.idx}", f"task_id:{task_id}", f"file:{safe_file}"],
                     db_path=db_path,
                 )
                 actual_content = generated_content.strip()
@@ -155,7 +158,7 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
                 role="worker",
                 temperature=0.0,
                 owner_id=owner_id,
-                context_tags=["role:worker", "tool:run_shell", f"task:{task_id}"],
+                context_tags=["role:worker", f"step:{step.idx}", f"task_id:{task_id}"],
                 db_path=db_path,
             )
             result = {
@@ -185,6 +188,8 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
                 messages=[{"role": "user", "content": worker_prompt}],
                 role="worker",
                 temperature=0.0,
+                owner_id=owner_id,
+                context_tags=["role:worker", f"step:{step.idx}", f"task_id:{task_id}"],
                 db_path=db_path,
             )
             result = {

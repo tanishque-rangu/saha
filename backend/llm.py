@@ -24,7 +24,7 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from dotenv import load_dotenv
 from openai import APIConnectionError, APIError, APITimeoutError, NotFoundError, OpenAI, RateLimitError
@@ -63,6 +63,29 @@ DEFAULT_TIMEOUT = float(os.getenv("SAHA_LLM_TIMEOUT", "60.0"))
 
 # Flag to disable thinking tokens via reasoning_effort='none'
 DISABLE_THINKING = os.getenv("SAHA_DISABLE_THINKING", "false").lower() in ("true", "1", "yes")
+
+# Strict identifier-only tag whitelist: no free text, spaces, or unauthorized prefixes
+TAG_REGEX = re.compile(r"^(goal_id|task_id|step|role|memory|file|probe|skill):[A-Za-z0-9._-]{1,64}$")
+
+
+def filter_context_tags(tags: Optional[List[str]]) -> Tuple[List[str], int]:
+    """Filter context tags against strict identifier-only whitelist.
+    
+    Allowed format: ^(goal_id|task_id|step|role|memory|file|probe|skill):[A-Za-z0-9._-]{1,64}$
+    Any tag containing spaces, free text, or unapproved prefixes is dropped.
+    Returns (valid_tags, dropped_count).
+    """
+    if not tags:
+        return [], 0
+    valid_tags: List[str] = []
+    dropped_count = 0
+    for tag in tags:
+        if isinstance(tag, str) and TAG_REGEX.match(tag.strip()):
+            valid_tags.append(tag.strip())
+        else:
+            dropped_count += 1
+    return valid_tags, dropped_count
+
 
 _client: Optional[OpenAI] = None
 
@@ -144,6 +167,9 @@ def call_llm(
     # Redaction pass
     clean_messages, input_chars, redaction_count = redact_messages(messages)
 
+    # Strict tag validation: drop any non-whitelisted or free text tags
+    valid_tags, dropped_tags = filter_context_tags(context_tags)
+
     kwargs: Dict[str, Any] = {
         "model": model,
         "messages": clean_messages,
@@ -193,10 +219,11 @@ def call_llm(
                 model=model,
                 role=effective_role,
                 owner_id=owner_id,
-                context_tags=context_tags,
+                context_tags=valid_tags,
                 input_chars=input_chars,
                 output_chars=len(result_str),
                 redaction_count=redaction_count,
+                dropped_tags=dropped_tags,
                 latency_ms=latency_ms,
                 prompt_tokens=p_tokens,
                 completion_tokens=c_tokens,
@@ -214,10 +241,11 @@ def call_llm(
                 model=model,
                 role=effective_role,
                 owner_id=owner_id,
-                context_tags=context_tags,
+                context_tags=valid_tags,
                 input_chars=input_chars,
                 output_chars=0,
                 redaction_count=redaction_count,
+                dropped_tags=dropped_tags,
                 latency_ms=latency_ms,
                 status="error",
                 error=f"Model not found: {e}",
@@ -240,10 +268,11 @@ def call_llm(
                 model=model,
                 role=effective_role,
                 owner_id=owner_id,
-                context_tags=context_tags,
+                context_tags=valid_tags,
                 input_chars=input_chars,
                 output_chars=0,
                 redaction_count=redaction_count,
+                dropped_tags=dropped_tags,
                 latency_ms=latency_ms,
                 status="error",
                 error=f"Transient failure after {attempts} attempts: {e}",

@@ -2,7 +2,7 @@
 
 import hashlib
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from backend.tools.sandbox import resolve_workspace_path
 
@@ -54,3 +54,13 @@ def get_file_sha256(path: str, task_id: Optional[str] = None) -> Optional[str]:
     except Exception:
         pass
     return None
+
+
+def list_files(path: str = ".", task_id: Optional[str] = None) -> List[str]:
+    """List files inside the task workspace sandbox."""
+    target = resolve_workspace_path(path, task_id=task_id)
+    if not target.exists():
+        raise FileNotFoundError(f"File or directory not found in workspace: {path}")
+    if target.is_file():
+        return [target.name]
+    return [item.name for item in sorted(target.iterdir())]

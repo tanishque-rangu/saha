@@ -6,16 +6,78 @@ Enforces WAL mode, foreign keys, monotonic audit tracking, and private owner spa
 
 import hashlib
 import json
+import logging
 import os
 import sqlite3
+import tempfile
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional
 
+logger = logging.getLogger(__name__)
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB_PATH = PROJECT_ROOT / "saha.db"
+
+# Global tracking for data directory health and fallback
+DATA_DIR_STATUS = {
+    "data_dir_ok": True,
+    "data_persistent": True,
+    "effective_data_dir": "/data",
+}
+
+
+def is_dir_writable(path: Path) -> bool:
+    """Test if a directory can be created and written to."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        test_file = path / f".write_test_{uuid.uuid4().hex}"
+        test_file.write_bytes(b"test")
+        test_file.unlink(missing_ok=True)
+        return True
+    except (PermissionError, OSError):
+        return False
+
+
+def check_and_init_data_dirs() -> None:
+    """Verify SAHA_DB_PATH directory and SAHA_WORKSPACE_ROOT are writable, else fallback to /tmp/saha-data."""
+    global DATA_DIR_STATUS
+    configured_db = os.getenv("SAHA_DB_PATH")
+    configured_ws = os.getenv("SAHA_WORKSPACE_ROOT")
+
+    db_dir = Path(configured_db).parent if configured_db else DEFAULT_DB_PATH.parent
+    ws_dir = Path(configured_ws) if configured_ws else (PROJECT_ROOT / "workspace")
+
+    db_ok = is_dir_writable(db_dir)
+    ws_ok = is_dir_writable(ws_dir)
+
+    if db_ok and ws_ok:
+        DATA_DIR_STATUS["data_dir_ok"] = True
+        # If explicitly pointed to tmp, persistent is False, else True
+        is_tmp = "/tmp" in str(db_dir) or "\\tmp" in str(db_dir) or "temp" in str(db_dir).lower()
+        DATA_DIR_STATUS["data_persistent"] = not is_tmp
+        DATA_DIR_STATUS["effective_data_dir"] = "/data" if str(db_dir).startswith("/data") else str(db_dir)
+    else:
+        logger.warning("Configured database or workspace directory is not writable. Falling back to /tmp/saha-data.")
+        fallback_root = Path(tempfile.gettempdir()) / "saha-data"
+        fallback_db_dir = fallback_root
+        fallback_ws_dir = fallback_root / "workspace"
+        fallback_db_dir.mkdir(parents=True, exist_ok=True)
+        fallback_ws_dir.mkdir(parents=True, exist_ok=True)
+
+        os.environ["SAHA_DB_PATH"] = str(fallback_db_dir / "saha.db")
+        os.environ["SAHA_WORKSPACE_ROOT"] = str(fallback_ws_dir)
+
+        DATA_DIR_STATUS["data_dir_ok"] = False
+        DATA_DIR_STATUS["data_persistent"] = False
+        DATA_DIR_STATUS["effective_data_dir"] = "/tmp/saha-data"
+
+
+def get_data_dir_status() -> Dict[str, Any]:
+    """Return status of data directory health without exposing user secrets."""
+    return dict(DATA_DIR_STATUS)
 
 
 def utc_now_iso() -> str:
@@ -136,6 +198,7 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     input_chars INTEGER DEFAULT 0,
     output_chars INTEGER DEFAULT 0,
     redaction_count INTEGER DEFAULT 0,
+    dropped_tags INTEGER DEFAULT 0,
     latency_ms REAL NOT NULL,
     prompt_tokens INTEGER DEFAULT 0,
     completion_tokens INTEGER DEFAULT 0,
@@ -213,6 +276,43 @@ def init_db(db_path: Optional[str] = None) -> None:
             conn.execute("DROP TABLE steps_old;")
             conn.execute("PRAGMA foreign_keys = ON;")
 
+        # 3b. Self-heal any foreign key references pointing to steps_old
+        for tbl in ("approvals", "drift_events"):
+            r_tbl = conn.execute(f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{tbl}'").fetchone()
+            if r_tbl and r_tbl[0] and "steps_old" in r_tbl[0]:
+                conn.execute(f"ALTER TABLE {tbl} RENAME TO {tbl}_old;")
+                if tbl == "approvals":
+                    conn.execute("""
+                    CREATE TABLE approvals (
+                        id TEXT PRIMARY KEY,
+                        owner_id TEXT NOT NULL,
+                        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                        step_id TEXT NOT NULL REFERENCES steps(id) ON DELETE CASCADE,
+                        tool TEXT NOT NULL,
+                        args_json TEXT NOT NULL DEFAULT '{}',
+                        reason TEXT NOT NULL,
+                        status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'denied')),
+                        created_at TEXT NOT NULL,
+                        resolved_at TEXT
+                    );
+                    """)
+                elif tbl == "drift_events":
+                    conn.execute("""
+                    CREATE TABLE drift_events (
+                        id TEXT PRIMARY KEY,
+                        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                        step_id TEXT NOT NULL REFERENCES steps(id) ON DELETE CASCADE,
+                        tool TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        explanation TEXT,
+                        detected_at TEXT NOT NULL
+                    );
+                    """)
+                cols = [row["name"] for row in conn.execute(f"PRAGMA table_info({tbl}_old)").fetchall()]
+                common = ", ".join(cols)
+                conn.execute(f"INSERT INTO {tbl} ({common}) SELECT {common} FROM {tbl}_old;")
+                conn.execute(f"DROP TABLE {tbl}_old;")
+
         # 4. Migrate llm_calls table columns if missing
         llm_cols = {row["name"] for row in conn.execute("PRAGMA table_info(llm_calls)").fetchall()}
         if "owner_id" not in llm_cols:
@@ -225,6 +325,8 @@ def init_db(db_path: Optional[str] = None) -> None:
             conn.execute("ALTER TABLE llm_calls ADD COLUMN output_chars INTEGER DEFAULT 0;")
         if "redaction_count" not in llm_cols:
             conn.execute("ALTER TABLE llm_calls ADD COLUMN redaction_count INTEGER DEFAULT 0;")
+        if "dropped_tags" not in llm_cols:
+            conn.execute("ALTER TABLE llm_calls ADD COLUMN dropped_tags INTEGER DEFAULT 0;")
 
         conn.executescript(INDEXES_SQL)
 
@@ -286,6 +388,7 @@ def record_llm_call(
     input_chars: int = 0,
     output_chars: int = 0,
     redaction_count: int = 0,
+    dropped_tags: int = 0,
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
     total_tokens: int = 0,
@@ -304,10 +407,10 @@ def record_llm_call(
             """
             INSERT INTO llm_calls (
                 id, owner_id, model, role, context_tags, input_chars, output_chars,
-                redaction_count, latency_ms, prompt_tokens, completion_tokens,
+                redaction_count, dropped_tags, latency_ms, prompt_tokens, completion_tokens,
                 total_tokens, status, error, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 call_id,
@@ -318,6 +421,7 @@ def record_llm_call(
                 int(input_chars or 0),
                 int(output_chars or 0),
                 int(redaction_count or 0),
+                int(dropped_tags or 0),
                 float(latency_ms),
                 int(prompt_tokens or 0),
                 int(completion_tokens or 0),
@@ -386,7 +490,7 @@ def get_owner_egress_logs(owner_id: str, limit: int = 100, db_path: Optional[str
         rows = conn.execute(
             """
             SELECT id, owner_id, model, role, context_tags, input_chars, output_chars,
-                   redaction_count, latency_ms, total_tokens, status, error, created_at
+                   redaction_count, dropped_tags, latency_ms, total_tokens, status, error, created_at
             FROM llm_calls
             WHERE owner_id = ?
             ORDER BY created_at DESC
@@ -401,9 +505,11 @@ def get_owner_egress_logs(owner_id: str, limit: int = 100, db_path: Optional[str
                 "model": r["model"],
                 "role": r["role"],
                 "tags": json.loads(r["context_tags"]) if r["context_tags"] else [],
+                "context_tags": json.loads(r["context_tags"]) if r["context_tags"] else [],
                 "input_chars": r["input_chars"],
                 "output_chars": r["output_chars"],
                 "redaction_count": r["redaction_count"],
+                "dropped_tags": r["dropped_tags"] if "dropped_tags" in r.keys() else 0,
                 "latency_ms": r["latency_ms"],
                 "total_tokens": r["total_tokens"],
                 "status": r["status"],

@@ -106,14 +106,16 @@ def test_sabotage_endpoint(client):
 
 def test_public_mode_goal_limit(client, monkeypatch):
     monkeypatch.setenv("SAHA_PUBLIC_MODE", "true")
+    headers = {"X-Saha-Owner": "test_public_mode_token_32_characters_1"}
     long_goal = "X" * 305
-    res = client.post("/tasks", json={"goal": long_goal})
+    res = client.post("/tasks", json={"goal": long_goal}, headers=headers)
     assert res.status_code == 422
     assert "300 characters" in res.json()["detail"]
 
 
 def test_public_mode_ip_rate_limit(client, monkeypatch):
     monkeypatch.setenv("SAHA_PUBLIC_MODE", "true")
+    headers = {"X-Saha-Owner": "test_public_mode_token_32_characters_2"}
     from backend.api import IP_POST_HISTORY, OWNER_POST_HISTORY
     IP_POST_HISTORY.clear()
     OWNER_POST_HISTORY.clear()
@@ -124,11 +126,11 @@ def test_public_mode_ip_rate_limit(client, monkeypatch):
     with patch("backend.api.generate_plan", return_value=mock_steps):
         # 10 creations should succeed
         for i in range(10):
-            res = client.post("/tasks", json={"goal": f"Goal {i}"})
+            res = client.post("/tasks", json={"goal": f"Goal {i}"}, headers=headers)
             assert res.status_code == 200
 
         # 11th creation must return 429
-        res11 = client.post("/tasks", json={"goal": "Goal 11"})
+        res11 = client.post("/tasks", json={"goal": "Goal 11"}, headers=headers)
         assert res11.status_code == 429
         assert "rate limit exceeded" in res11.json()["detail"].lower()
 

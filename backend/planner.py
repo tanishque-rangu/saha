@@ -103,7 +103,7 @@ def generate_plan(goal: str, context: Optional[str] = None, owner_id: Optional[s
                 role="planner",
                 temperature=0.0,
                 owner_id=owner_id,
-                context_tags=["role:planner", "goal_plan"],
+                context_tags=["role:planner"],
             )
             if isinstance(raw_dict, list):
                 raw_dict = {"steps": raw_dict}
@@ -172,7 +172,7 @@ CRITICAL RULES FOR DRIFT REPAIR:
         role="planner",
         temperature=0.0,
         owner_id=owner_id,
-        context_tags=["role:planner", "drift_replan"],
+        context_tags=["role:planner", f"task_id:{task.id}"],
     )
     if isinstance(raw_dict, list):
         raw_dict = {"steps": raw_dict}

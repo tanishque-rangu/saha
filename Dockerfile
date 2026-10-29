@@ -20,9 +20,10 @@ RUN groupadd -g 10001 appgroup && \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy only needed application code and web assets
+# Copy only needed application code, skills, and web assets
 COPY backend/ ./backend/
 COPY cli/ ./cli/
+COPY skills/ ./skills/
 COPY web/ ./web/
 
 # Ensure app directory permissions
