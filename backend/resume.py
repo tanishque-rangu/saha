@@ -160,10 +160,13 @@ def reconcile_task_reality(task_id: str, db_path: Optional[str] = None) -> Dict[
 
 
 def resume_task(task_id: str, db_path: Optional[str] = None) -> Dict[str, Any]:
-    """Reconcile reality, calculate dependencies, append repair steps, and resume execution."""
+    """Recover interrupted steps, reconcile reality, calculate dependencies, and resume execution."""
     task = Ledger.get_task(task_id, db_path=db_path)
     if not task:
         raise ValueError(f"Task {task_id} not found")
+
+    # Step 0: Recover any interrupted/ambiguous steps from previous crashes
+    Ledger.recover_task_interrupted_steps(task_id, db_path=db_path)
 
     # Step 1: Reconcile against physical reality
     drift_report = reconcile_task_reality(task_id, db_path=db_path)
@@ -182,8 +185,18 @@ def resume_task(task_id: str, db_path: Optional[str] = None) -> Dict[str, Any]:
             "message": "Task is already fully verified against reality.",
         }
 
-    # Step 2: Determine dependent steps based on depends_on
+    # Step 2: If NO drift on verified steps, resume execution of pending steps directly
     drifted_steps = [s for s in active_steps if s.status == "drifted"]
+    if not drifted_steps:
+        final_task = run_task(task_id, db_path=db_path)
+        final_summary = Ledger.get_task_summary(task_id, db_path=db_path)
+        return {
+            "task": final_task.to_dict(),
+            "drift_detected": False,
+            "drift_report": drift_report,
+            "replanned": False,
+            "summary": final_summary,
+        }
     drifted_indices = {s.idx for s in drifted_steps}
 
     # Transitive dependency resolution: find all steps that depend on drifted steps

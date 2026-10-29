@@ -51,6 +51,10 @@ WEB_DIR = PROJECT_ROOT / "web"
 
 # Startup check: verify database and workspace directory writability or fallback
 check_and_init_data_dirs()
+try:
+    Ledger.recover_stale_running_tasks()
+except Exception:
+    pass
 
 app = FastAPI(
     title="Saha API",
@@ -480,7 +484,7 @@ def resume_task_endpoint(task_id: str, request: Request, background_tasks: Backg
 
     db_path = str(get_db_path())
     Ledger.update_task_status(task_id, "running")
-    threading.Thread(target=resume_task, args=(task_id, None, db_path), daemon=True).start()
+    threading.Thread(target=resume_task, args=(task_id, db_path), daemon=True).start()
     return {"status": "resuming", "task_id": task_id}
 
 

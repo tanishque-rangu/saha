@@ -256,10 +256,17 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
 
 
 def run_task(task_id: str, db_path: Optional[str] = None) -> Task:
-    """Run all active pending steps of a task sequentially."""
+    """Run all active pending steps of a task sequentially, recovering from interruptions."""
     task = Ledger.get_task(task_id, db_path=db_path)
     if not task:
         raise ValueError(f"Task {task_id} not found")
+
+    # Step A: Recover any interrupted/ambiguous steps from previous crashes
+    Ledger.recover_task_interrupted_steps(task_id, db_path=db_path)
+
+    # Step B: If task was in 'running' status before restart, mark paused so check_concurrency passes
+    if task.status == "running":
+        Ledger.update_task_status(task_id, "paused", db_path=db_path)
 
     check_concurrency(db_path=db_path)
     Ledger.update_task_status(task_id, "running", db_path=db_path)

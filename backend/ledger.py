@@ -562,3 +562,94 @@ class Ledger:
             "steps": [s.to_dict() for s in all_steps],
             "active_steps": [s.to_dict() for s in active_steps],
         }
+
+    @staticmethod
+    def reset_step_to_pending(
+        step_id: str,
+        db_path: Optional[str] = None,
+    ) -> Step:
+        """Reset an interrupted or unverified step back to pending for re-execution."""
+        init_db(db_path)
+        with get_db(db_path) as conn:
+            conn.execute(
+                """
+                UPDATE steps
+                SET status = 'pending', started_at = NULL, finished_at = NULL, error = NULL
+                WHERE id = ?
+                """,
+                (step_id,),
+            )
+        step = Ledger.get_step(step_id, db_path)
+        if not step:
+            raise RuntimeError(f"Step {step_id} not found")
+        return step
+
+    @staticmethod
+    def recover_interrupted_step(
+        step: Step,
+        task_id: str,
+        db_path: Optional[str] = None,
+    ) -> Step:
+        """Conservatively evaluate an interrupted step in 'running' or 'done' state.
+
+        If the step was in 'done' state with a recorded result, runs deterministic
+        verification. If the probe passes, transitions to 'verified'.
+        If outcome cannot be verified or was in 'running' state, resets to 'pending'.
+        """
+        from backend.verifiers import verify_step
+
+        if step.status == "done" and step.result_json:
+            try:
+                args = json.loads(step.args_json) if step.args_json else {}
+            except Exception:
+                args = {}
+            try:
+                result = json.loads(step.result_json) if step.result_json else {}
+            except Exception:
+                result = {}
+            try:
+                probe_spec = json.loads(step.probe_json) if step.probe_json else {}
+            except Exception:
+                probe_spec = {}
+
+            probe_result = verify_step(
+                tool=step.tool,
+                args=args,
+                result=result,
+                probe_spec=probe_spec,
+                task_id=task_id,
+            )
+            if probe_result.get("passed"):
+                return Ledger.mark_step_verified(step.id, probe=probe_result, db_path=db_path)
+
+        # Conservative fallback: outcome is ambiguous or unverified -> reset to pending
+        return Ledger.reset_step_to_pending(step.id, db_path=db_path)
+
+    @staticmethod
+    def recover_task_interrupted_steps(
+        task_id: str,
+        db_path: Optional[str] = None,
+    ) -> List[Step]:
+        """Recover any active steps in 'running' or 'done' status for a task."""
+        init_db(db_path)
+        all_steps = Ledger.get_steps(task_id, include_superseded=False, db_path=db_path)
+        recovered = []
+        for s in all_steps:
+            if s.status in ("running", "done"):
+                rec_step = Ledger.recover_interrupted_step(s, task_id=task_id, db_path=db_path)
+                recovered.append(rec_step)
+        return recovered
+
+    @staticmethod
+    def recover_stale_running_tasks(db_path: Optional[str] = None) -> List[str]:
+        """Find any tasks left in 'running' state after a process crash and pause them safely."""
+        init_db(db_path)
+        with get_db(db_path) as conn:
+            rows = conn.execute("SELECT id FROM tasks WHERE status = 'running'").fetchall()
+            task_ids = [r["id"] for r in rows]
+
+        for tid in task_ids:
+            Ledger.recover_task_interrupted_steps(tid, db_path=db_path)
+            Ledger.update_task_status(tid, "paused", db_path=db_path)
+
+        return task_ids
