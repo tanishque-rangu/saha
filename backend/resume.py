@@ -38,10 +38,46 @@ def clean_fast_explanation(raw: str) -> str:
     return sentences[0] if sentences else cleaned
 
 
+def _generate_fast_explanation_worker(
+    event_id: str,
+    intent: str,
+    verified_time: str,
+    probe_name: str,
+    error_msg: str,
+    db_path: Optional[str] = None,
+) -> None:
+    """Worker function executed in background thread to generate FAST explanation."""
+    fast_prompt = (
+        f"You are Saha's Fast Auditor AI. Given these structured facts:\n"
+        f"- Step Intent: {intent}\n"
+        f"- Last Verified At: {verified_time}\n"
+        f"- Probe Name: {probe_name}\n"
+        f"- Probe Failure Reason: {error_msg}\n\n"
+        f"In exactly one sentence, state what was verified before and what the probe sees now. "
+        f"Do NOT guess a cause."
+    )
+    try:
+        raw_expl = call_llm(
+            model=FAST_MODEL,
+            messages=[{"role": "user", "content": fast_prompt}],
+            role="fast",
+            temperature=0.0,
+            max_tokens=150,
+            timeout=15.0,
+            db_path=db_path,
+        ).strip()
+        explanation = clean_fast_explanation(raw_expl)
+        Ledger.update_drift_explanation(event_id, explanation, db_path=db_path)
+    except Exception:
+        fallback = f"Step was verified at {verified_time}, but probe '{probe_name}' currently reports: {error_msg}."
+        Ledger.update_drift_explanation(event_id, fallback, db_path=db_path)
+
+
 def reconcile_task_reality(task_id: str, db_path: Optional[str] = None) -> Dict[str, Any]:
     """Audit all active verified/done steps against physical reality.
     
-    Marks failing steps as `drifted` and records a drift_events row with FAST model explanation.
+    Marks failing steps as `drifted` and records a drift_events row immediately.
+    Spawns background thread for FAST explanation.
     """
     task = Ledger.get_task(task_id, db_path=db_path)
     if not task:
@@ -79,43 +115,26 @@ def reconcile_task_reality(task_id: str, db_path: Optional[str] = None) -> Dict[
                 probe_name = probe_spec.get("probe_type") or probe_result.get("probe") or f"{step.tool}_probe"
                 verified_time = step.finished_at or step.started_at or "previously"
 
-                # FAST model receives structured facts only:
-                # step intent, last verified time, probe name, probe failure reason.
-                # Prompt: exactly one sentence, what was verified before and what probe sees now, do NOT guess cause.
-                fast_prompt = (
-                    f"You are Saha's Fast Auditor AI. Given these structured facts:\n"
-                    f"- Step Intent: {step.intent}\n"
-                    f"- Last Verified At: {verified_time}\n"
-                    f"- Probe Name: {probe_name}\n"
-                    f"- Probe Failure Reason: {error_msg}\n\n"
-                    f"In exactly one sentence, state what was verified before and what the probe sees now. "
-                    f"Do NOT guess a cause."
-                )
-                try:
-                    raw_expl = call_llm(
-                        model=FAST_MODEL,
-                        messages=[{"role": "user", "content": fast_prompt}],
-                        role="fast",
-                        temperature=0.0,
-                        max_tokens=150,
-                        db_path=db_path,
-                    ).strip()
-                    explanation = clean_fast_explanation(raw_expl)
-                except Exception as fast_err:
-                    explanation = f"Step was verified at {verified_time}, but probe '{probe_name}' currently reports: {error_msg}."
-
-                # Mark step drifted in ledger (stays drifted, never superseded)
+                # Mark step drifted in ledger immediately (stays drifted, never superseded)
                 Ledger.mark_step_drifted(step.id, reason=error_msg, probe=probe_result, db_path=db_path)
 
-                # Record immutable drift event
+                # Record immutable drift event immediately with explanation=None
                 event_id = Ledger.record_drift_event(
                     task_id=task_id,
                     step_id=step.id,
                     tool=step.tool,
                     reason=error_msg,
-                    explanation=explanation,
+                    explanation=None,
                     db_path=db_path,
                 )
+
+                # Spawn non-blocking background thread for FAST explanation
+                import threading
+                threading.Thread(
+                    target=_generate_fast_explanation_worker,
+                    args=(event_id, step.intent, verified_time, probe_name, error_msg, db_path),
+                    daemon=True,
+                ).start()
 
                 drifted_steps.append({
                     "event_id": event_id,
@@ -125,7 +144,7 @@ def reconcile_task_reality(task_id: str, db_path: Optional[str] = None) -> Dict[
                     "intent": step.intent,
                     "tool": step.tool,
                     "reason": error_msg,
-                    "explanation": explanation,
+                    "explanation": None,
                 })
 
     return {

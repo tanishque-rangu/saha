@@ -95,6 +95,8 @@ def test_sabotage_endpoint(client):
     data = res.json()
     assert data["status"] == "sabotaged"
     assert data["deleted_file"] == "artifact.txt"
+    assert "path" not in data
+    assert "message" in data
     assert not disk_path.exists()
 
     # Verify ledger was NOT touched

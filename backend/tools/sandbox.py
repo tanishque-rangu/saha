@@ -101,7 +101,7 @@ def resolve_workspace_path(path: str, task_id: Optional[str] = None) -> Path:
         resolved.relative_to(ws)
     except ValueError:
         raise PermissionError(
-            f"Path traversal rejected: '{path_str}' resolves outside task workspace boundary ({ws})"
+            f"Path traversal rejected: '{path_str}' resolves outside task workspace boundary."
         )
 
     # Reject symlinks and junctions

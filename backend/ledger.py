@@ -367,9 +367,23 @@ class Ledger:
                 INSERT INTO drift_events (id, task_id, step_id, tool, reason, explanation, detected_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (event_id, task_id, step_id, tool, reason, explanation or reason, now),
+                (event_id, task_id, step_id, tool, reason, explanation, now),
             )
         return event_id
+
+    @staticmethod
+    def update_drift_explanation(
+        event_id: str,
+        explanation: str,
+        db_path: Optional[str] = None,
+    ) -> None:
+        """Update the plain-English explanation for an existing drift event."""
+        init_db(db_path)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "UPDATE drift_events SET explanation = ? WHERE id = ?",
+                (explanation, event_id),
+            )
 
     @staticmethod
     def supersede_steps(

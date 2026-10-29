@@ -104,7 +104,8 @@ def create_task(req: CreateTaskRequest, request: Request) -> Dict[str, Any]:
         step_plans = generate_plan(goal)
     except Exception as e:
         Ledger.update_task_status(task.id, "failed")
-        raise HTTPException(status_code=500, detail=f"Planning failed: {e}")
+        msg = "Planning failed. Please try again." if is_public_mode() else f"Planning failed: {e}"
+        raise HTTPException(status_code=500, detail=msg)
 
     steps_data = []
     for sp in step_plans:
@@ -193,10 +194,18 @@ def sabotage_task_endpoint(task_id: str) -> Dict[str, Any]:
         "status": "sabotaged",
         "task_id": task_id,
         "deleted_file": target_rel,
-        "path": str(target_disk_path),
-        "file_existed_before_deletion": existed,
-        "ledger_touched": False,
+        "message": f"Successfully deleted '{target_rel}' from task workspace without modifying ledger.",
     }
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    if is_public_mode():
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "An internal error occurred. Please try again."},
+        )
+    return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 
 @app.get("/")
