@@ -173,6 +173,20 @@ def resume_task(task_id: str, db_path: Optional[str] = None) -> Dict[str, Any]:
 
     all_steps = Ledger.get_steps(task_id, include_superseded=True, db_path=db_path)
     active_steps = [s for s in all_steps if s.status != "superseded"]
+
+    # If any active steps are blocked, pause the task and require owner intervention
+    blocked_steps = [s for s in active_steps if s.status == "blocked"]
+    if blocked_steps:
+        Ledger.update_task_status(task_id, "paused", db_path=db_path)
+        return {
+            "task": Ledger.get_task(task_id, db_path=db_path).to_dict(),
+            "drift_detected": False,
+            "drift_report": drift_report,
+            "replanned": False,
+            "summary": Ledger.get_task_summary(task_id, db_path=db_path),
+            "message": "Task is paused awaiting approval for blocked step(s).",
+        }
+
     pending_or_drifted = [s for s in active_steps if s.status in ("drifted", "pending", "failed")]
 
     if not pending_or_drifted and not drift_report["has_drift"]:
