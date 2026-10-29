@@ -169,8 +169,14 @@ def main():
     print("PART B: EXTERNAL HTTP MUTATION RECOVERY (IDEMPOTENCY & AMBIGUITY HANDLING)")
     print("-" * 80)
 
-    # Scenario 1: Idempotency Key Reuse
-    print(f"\n[6] Scenario 1: External Mutation on Supported Target (with Idempotency Key)")
+    # Scenario 1: Idempotency Key Reuse with Owner-Trusted Policy
+    print(f"\n[6] Scenario 1: External Mutation on Trusted Target (Owner-Controlled Idempotency)")
+    # Owner configures trusted_idempotency_domains in policy
+    pol = get_owner_policy(owner_id, db_path=str(demo_db))
+    pol.trusted_idempotency_domains = ["httpbin.org"]
+    set_owner_policy(owner_id, pol, db_path=str(demo_db))
+    print(f"    Owner Configured Trusted Idempotency Domains: {pol.trusted_idempotency_domains}")
+
     http_task1 = Ledger.create_task("Payment invoice mutation", owner_id=owner_id, db_path=str(demo_db))
     http_step1 = Ledger.add_steps(
         http_task1.id,
@@ -238,6 +244,12 @@ def main():
 
     # Scenario 2: Ambiguous Mutation without Idempotency (Conservative Halt)
     print(f"\n[7] Scenario 2: External Mutation without Idempotency (Ambiguous Outcome)")
+    # Reset trusted domains: legacy bank target is NOT trusted by owner for idempotency
+    pol = get_owner_policy(owner_id, db_path=str(demo_db))
+    pol.trusted_idempotency_domains = []
+    set_owner_policy(owner_id, pol, db_path=str(demo_db))
+    print(f"    Owner Configured Trusted Idempotency Domains: {pol.trusted_idempotency_domains}")
+
     http_task2 = Ledger.create_task("Legacy wire transfer without deduplication", owner_id=owner_id, db_path=str(demo_db))
     http_step2 = Ledger.add_steps(
         http_task2.id,

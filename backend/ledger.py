@@ -652,26 +652,42 @@ class Ledger:
 
         # 2. Check if this is an external HTTP mutation
         if is_http_mutation_step(step.tool, args):
-            # Check if deduplication / stable idempotency key is supported
-            supports_idem = target_supports_idempotency(step.tool, args)
+            from backend.db import get_task_owner_id
+            from backend.policy import create_approval, get_owner_policy
+            from backend.tools.http import target_supports_idempotency
 
-            if supports_idem:
-                # Deduplication is available! Ensure stable key is persisted for retry
+            owner_id = get_task_owner_id(task_id, db_path=db_path) or "default"
+            policy = get_owner_policy(owner_id, db_path=db_path)
+
+            # Check if deduplication / stable idempotency key is TRUSTED by owner configuration
+            trusted = target_supports_idempotency(
+                tool=step.tool,
+                args=args,
+                policy=policy,
+                owner_id=owner_id,
+                db_path=db_path,
+            )
+
+            if trusted:
+                # Deduplication is verified by owner-controlled trusted configuration!
+                # Ensure stable key is persisted for retry
                 if not args.get("idempotency_key"):
                     args["idempotency_key"] = f"idem_{step.id}"
                     Ledger.update_step_args(step.id, args, db_path=db_path)
                 return Ledger.reset_step_to_pending(step.id, db_path=db_path)
             else:
-                # Ambiguous mutation without deduplication: remote service may have applied it!
-                # Do NOT automatically retry. Record explicit ambiguous state and require authorized decision.
-                from backend.policy import create_approval
-                from backend.db import get_task_owner_id
-
-                owner_id = get_task_owner_id(task_id, db_path=db_path) or "default"
+                # Ambiguous mutation without trusted deduplication:
+                # The remote service may already have applied the mutation.
+                # Planner output alone can NEVER authorize automatic retry!
+                # Record explicit ambiguous state and require authorized owner decision.
+                method = str(args.get("method", "POST" if ("body" in args or "json" in args) else "GET")).upper()
+                url = args.get("url", "")
                 reason = (
-                    "Ambiguous external HTTP mutation: Interrupted before response was recorded "
-                    "and deduplication/idempotency is unavailable. Requires authorized resume decision "
-                    "to reconcile or retry."
+                    f"Ambiguous external HTTP mutation ({method} {url}): "
+                    "Execution was interrupted before a response was recorded, and idempotency deduplication "
+                    "is not confirmed by trusted owner policy. The remote outcome may already have taken effect or may be unknown. "
+                    "Approving this request will re-dispatch (retry) the mutation to the remote service; "
+                    "denying it will mark the step failed without re-sending the request."
                 )
                 create_approval(
                     owner_id=owner_id,

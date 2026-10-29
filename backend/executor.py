@@ -198,11 +198,22 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
 
             if is_mutation:
                 from backend.tools.http import target_supports_idempotency
-                if target_supports_idempotency(step.tool, args) and not idempotency_key:
-                    # Generate stable key and PERSIST immediately to SQLite step args before network call
-                    idempotency_key = f"idem_{step.id}"
-                    args["idempotency_key"] = idempotency_key
-                    Ledger.update_step_args(step.id, args, db_path=db_path)
+                is_trusted = target_supports_idempotency(
+                    tool=step.tool,
+                    args=args,
+                    policy=policy,
+                    owner_id=owner_id,
+                    db_path=db_path,
+                )
+                if is_trusted:
+                    if not idempotency_key:
+                        # Generate stable key and PERSIST immediately to SQLite step args before network call
+                        idempotency_key = f"idem_{step.id}"
+                        args["idempotency_key"] = idempotency_key
+                        Ledger.update_step_args(step.id, args, db_path=db_path)
+                else:
+                    # Untrusted target: do not generate or use idempotency key for automatic retries
+                    idempotency_key = None
 
             headers = args.get("headers") or {}
             body = args.get("body") or args.get("content")
@@ -340,7 +351,11 @@ def run_task(task_id: str, db_path: Optional[str] = None) -> Task:
         if summary["is_complete"]:
             Ledger.update_task_status(task_id, "complete", db_path=db_path)
         else:
-            Ledger.update_task_status(task_id, "paused", db_path=db_path)
+            has_failed = any(s["status"] == "failed" for s in summary["steps"] if s["status"] != "superseded")
+            if has_failed:
+                Ledger.update_task_status(task_id, "failed", db_path=db_path)
+            else:
+                Ledger.update_task_status(task_id, "paused", db_path=db_path)
 
     except Exception as e:
         Ledger.update_task_status(task_id, "failed", db_path=db_path)

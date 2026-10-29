@@ -51,6 +51,14 @@ class Policy(BaseModel):
         default=8 if is_public_mode() else 10,
         description="Maximum number of steps permitted in a single task DAG.",
     )
+    trusted_idempotency_domains: List[str] = Field(
+        default_factory=list,
+        description="External domains trusted by the owner to support safe idempotency key deduplication.",
+    )
+    idempotency_domains: Optional[List[str]] = Field(
+        default=None,
+        description="Optional alias for trusted_idempotency_domains.",
+    )
 
 
 def get_default_policy() -> Policy:
@@ -62,6 +70,7 @@ def get_default_policy() -> Policy:
             allowed_paths=["*"],
             auto_heal=True,
             max_steps=8,
+            trusted_idempotency_domains=[],
         )
     return Policy(
         allowed_tools=["write_file", "read_file", "run_shell", "http_get", "http_request", "list_files"],
@@ -69,6 +78,7 @@ def get_default_policy() -> Policy:
         allowed_paths=["*"],
         auto_heal=True,
         max_steps=10,
+        trusted_idempotency_domains=[],
     )
 
 
@@ -313,10 +323,14 @@ def deny_request(
             (now, approval_id),
         )
 
-        # 2. Mark step failed
+        # 2. Mark step and task failed
         conn.execute(
             "UPDATE steps SET status = 'failed', error = 'Denied by owner policy approval' WHERE id = ?",
             (step_id,),
+        )
+        conn.execute(
+            "UPDATE tasks SET status = 'failed', updated_at = ? WHERE id = ?",
+            (now, row["task_id"]),
         )
 
     return {

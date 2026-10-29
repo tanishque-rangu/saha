@@ -102,22 +102,74 @@ def is_http_mutation_step(tool: str, args: Dict[str, Any]) -> bool:
     return False
 
 
-def target_supports_idempotency(tool: str, args: Dict[str, Any]) -> bool:
-    """Determine whether the target endpoint supports idempotency keys for mutation deduplication."""
+def is_trusted_idempotency_target(
+    url: str,
+    policy: Optional[Any] = None,
+    owner_id: Optional[str] = None,
+    db_path: Optional[str] = None,
+) -> bool:
+    """Determine whether an HTTP endpoint has trusted idempotency deduplication support.
+
+    TRUST BOUNDARY:
+    Planner-generated step data, arguments, and supplied headers are untrusted LLM outputs
+    and CANNOT establish idempotency trust. Trust is established ONLY by:
+    1. Owner-controlled policy configuration (policy.trusted_idempotency_domains or policy.idempotency_domains).
+    2. Explicit environment configuration (SAHA_TRUSTED_IDEMPOTENCY_DOMAINS / SAHA_IDEMPOTENCY_DOMAINS).
+    """
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower().strip()
+    except Exception:
+        return False
+    if not host:
+        return False
+
+    if policy is None and owner_id:
+        from backend.policy import get_owner_policy
+        policy = get_owner_policy(owner_id, db_path=db_path)
+
+    # 1. Owner-controlled policy domains
+    if policy:
+        trusted = (
+            getattr(policy, "trusted_idempotency_domains", None)
+            or getattr(policy, "idempotency_domains", None)
+            or []
+        )
+        for domain in trusted:
+            clean = domain.lower().strip()
+            if clean and (host == clean or host.endswith("." + clean)):
+                return True
+
+    # 2. Trusted environment configuration
+    env_domains = os.getenv("SAHA_TRUSTED_IDEMPOTENCY_DOMAINS", os.getenv("SAHA_IDEMPOTENCY_DOMAINS", ""))
+    if env_domains:
+        for domain in env_domains.split(","):
+            clean = domain.lower().strip()
+            if clean and (host == clean or host.endswith("." + clean)):
+                return True
+
+    return False
+
+
+def target_supports_idempotency(
+    tool: str,
+    args: Dict[str, Any],
+    policy: Optional[Any] = None,
+    owner_id: Optional[str] = None,
+    db_path: Optional[str] = None,
+) -> bool:
+    """Determine whether an HTTP mutation step targets an endpoint with trusted idempotency deduplication.
+
+    CRITICAL TRUST BOUNDARY:
+    Planner-generated step data, arguments, or headers are untrusted and cannot establish trust.
+    Trust is strictly verified against owner-controlled policy or trusted environment configuration.
+    """
     if not is_http_mutation_step(tool, args):
         return False
-    if args.get("supports_idempotency") is not None:
-        return bool(args.get("supports_idempotency"))
-    if args.get("idempotency_supported") is not None:
-        return bool(args.get("idempotency_supported"))
-    if args.get("idempotency_key"):
-        return True
-    if args.get("idempotency_header"):
-        return True
-    headers = args.get("headers") or {}
-    if any(k.lower() in ("idempotency-key", "x-idempotency-key") for k in headers):
-        return True
-    return False
+    url = args.get("url", "")
+    return is_trusted_idempotency_target(url=url, policy=policy, owner_id=owner_id, db_path=db_path)
 
 
 def http_request(

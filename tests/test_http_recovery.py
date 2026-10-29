@@ -1,16 +1,20 @@
 """Focused tests for HTTP mutation recovery under process interruption.
 
-Tests the following critical recovery requirements:
-1. Interrupted HTTP mutation with idempotency key: persists stable key in SQLite,
-   reuses the exact same key on retry, ensuring remote service deduplication.
-2. Interrupted HTTP mutation without idempotency: outcome is ambiguous and cannot
-   be verified; does NOT automatically retry, records explicit ambiguous/blocked
-   state, and requires an authorized owner decision.
-3. Owner authorization flow: approving the ambiguous mutation allows the task to resume;
-   denying the ambiguous mutation marks the step and task failed.
-4. Pre-crash completed mutation ('done' state with recorded result): probe verifies
+Tests the following critical recovery requirements & trust boundaries:
+1. Planner trust boundary: planner-supplied flags (supports_idempotency: True)
+   CANNOT authorize automatic retry of an ambiguous external mutation.
+2. Planner trust boundary: planner-supplied headers (Idempotency-Key)
+   CANNOT authorize automatic retry of an ambiguous external mutation.
+3. Trusted owner configuration: setting policy.trusted_idempotency_domains DOES
+   enable stable idempotency key persistence and identical reuse across retries.
+4. Ambiguous mutation approval message: approval request reason clearly explains
+   that the remote outcome may be unknown and approving will re-dispatch (retry)
+   the mutation while denying will fail the step without network calls.
+5. Owner decision execution: approving resumes and executes the mutation;
+   denying marks the step failed with zero network requests.
+6. Pre-crash completed mutation ('done' state with recorded result): probe verifies
    without repeating the external HTTP mutation.
-5. Strict policy preservation: resumed HTTP actions strictly enforce policy and domain
+7. Policy preservation: resumed HTTP actions strictly enforce policy and domain
    allowlists before network dispatch.
 """
 
@@ -28,7 +32,7 @@ from backend.executor import execute_step, run_task
 from backend.ledger import Ledger
 from backend.policy import approve_request, deny_request, get_owner_approvals, get_owner_policy, set_owner_policy
 from backend.resume import resume_task
-from backend.tools.http import is_http_mutation_step, target_supports_idempotency
+from backend.tools.http import is_http_mutation_step, is_trusted_idempotency_target, target_supports_idempotency
 
 
 @pytest.fixture
@@ -50,26 +54,151 @@ def http_recovery_env(monkeypatch):
     return {"db": str(test_db), "ws": str(test_ws), "tmp": tmp_dir}
 
 
-def test_interrupted_http_mutation_with_idempotency_reuses_stable_key(http_recovery_env):
-    """Proof that an interrupted HTTP mutation step persists its idempotency key to SQLite
-    and reuses the exact same key upon restart recovery instead of generating a new one."""
+def test_planner_supplied_flags_cannot_authorize_automatic_retry(http_recovery_env):
+    """TRUST BOUNDARY TEST:
+    A planner-generated step setting supports_idempotency: True CANNOT authorize automatic
+    retry of an ambiguous mutation if the domain is not in owner policy trusted_idempotency_domains.
+    """
     db_path = http_recovery_env["db"]
-    token = "owner_token_idem_key_test_32_chars!"
+    token = "owner_token_planner_flag_test_32_c"
     owner_id = hash_owner_token(token)
 
-    task = Ledger.create_task("Payment mutation with idempotency", owner_id=owner_id, db_path=db_path)
+    # Ensure owner policy has domain in allowed_domains, but NOT in trusted_idempotency_domains
+    policy = get_owner_policy(owner_id, db_path=db_path)
+    policy.allowed_domains = ["httpbin.org"]
+    policy.trusted_idempotency_domains = []  # NOT trusted by owner!
+    set_owner_policy(owner_id, policy, db_path=db_path)
+
+    task = Ledger.create_task("Untrusted planner flag task", owner_id=owner_id, db_path=db_path)
     steps = Ledger.add_steps(
         task.id,
         [
             {
                 "idx": 1,
-                "intent": "Create invoice via external HTTP POST mutation",
+                "intent": "Mutation with planner claiming idempotency support",
                 "tool": "http_request",
                 "args": {
                     "url": "https://httpbin.org/post",
                     "method": "POST",
-                    "json": {"amount": 500, "currency": "USD"},
-                    "supports_idempotency": True,
+                    "json": {"action": "transfer"},
+                    "supports_idempotency": True,      # Planner output (UNTRUSTED)
+                    "idempotency_supported": True,     # Planner output (UNTRUSTED)
+                },
+                "probe": {"expected_status": 200},
+                "depends_on": [],
+            }
+        ],
+        db_path=db_path,
+    )
+    step_id = steps[0].id
+
+    # Simulate interruption during flight before response was recorded
+    Ledger.mark_step_running(step_id, db_path=db_path)
+    Ledger.update_task_status(task.id, "running", db_path=db_path)
+
+    recorded_calls = []
+
+    def mock_http_request(*args, **kwargs):
+        recorded_calls.append(kwargs)
+        return {"status_code": 200, "body": "ok"}
+
+    with patch("backend.executor.http_request", side_effect=mock_http_request):
+        recovered_task = run_task(task.id, db_path=db_path)
+
+    # INVARIANTS:
+    # 1. ZERO HTTP calls were made! Planner flag was REJECTED as an authorization to retry.
+    assert len(recorded_calls) == 0, "CRITICAL: Planner-supplied flag authorized automatic retry!"
+    # 2. Step was safely blocked
+    crashed_step = Ledger.get_step(step_id, db_path=db_path)
+    assert crashed_step.status == "blocked"
+    assert "Ambiguous external HTTP mutation" in (crashed_step.block_reason or "")
+    assert "not confirmed by trusted owner policy" in (crashed_step.block_reason or "")
+    # 3. Task paused
+    assert recovered_task.status == "paused"
+    # 4. Approval request logged
+    approvals = get_owner_approvals(owner_id, status="pending", db_path=db_path)
+    assert len(approvals) == 1
+    assert approvals[0]["step_id"] == step_id
+
+
+def test_planner_supplied_headers_cannot_authorize_automatic_retry(http_recovery_env):
+    """TRUST BOUNDARY TEST:
+    A planner-generated step supplying an Idempotency-Key header CANNOT authorize automatic
+    retry of an ambiguous mutation if the domain is not in owner policy trusted_idempotency_domains.
+    """
+    db_path = http_recovery_env["db"]
+    token = "owner_token_planner_hdr_test_32_ch"
+    owner_id = hash_owner_token(token)
+
+    # Owner policy does NOT trust httpbin.org for idempotency
+    policy = get_owner_policy(owner_id, db_path=db_path)
+    policy.allowed_domains = ["httpbin.org"]
+    policy.trusted_idempotency_domains = []
+    set_owner_policy(owner_id, policy, db_path=db_path)
+
+    task = Ledger.create_task("Untrusted planner header task", owner_id=owner_id, db_path=db_path)
+    steps = Ledger.add_steps(
+        task.id,
+        [
+            {
+                "idx": 1,
+                "intent": "Mutation with planner supplying idempotency header",
+                "tool": "http_request",
+                "args": {
+                    "url": "https://httpbin.org/post",
+                    "method": "POST",
+                    "headers": {"Idempotency-Key": "untrusted-planner-hallucinated-key"},
+                    "idempotency_key": "untrusted-planner-key",
+                },
+                "probe": {"expected_status": 200},
+                "depends_on": [],
+            }
+        ],
+        db_path=db_path,
+    )
+    step_id = steps[0].id
+
+    # Simulate interruption mid-flight
+    Ledger.mark_step_running(step_id, db_path=db_path)
+    Ledger.update_task_status(task.id, "running", db_path=db_path)
+
+    recorded_calls = []
+    with patch("backend.executor.http_request", side_effect=lambda *a, **kw: recorded_calls.append(kw)):
+        recovered_task = run_task(task.id, db_path=db_path)
+
+    # Invariants: 0 calls, blocked, approval created
+    assert len(recorded_calls) == 0, "Planner header authorized automatic retry!"
+    step = Ledger.get_step(step_id, db_path=db_path)
+    assert step.status == "blocked"
+    assert "not confirmed by trusted owner policy" in (step.block_reason or "")
+    assert recovered_task.status == "paused"
+
+
+def test_trusted_owner_configuration_enables_stable_key_reuse(http_recovery_env):
+    """Proof that when the owner explicitly configures a domain in trusted_idempotency_domains,
+    a stable idempotency key is persisted to SQLite and reused identically upon restart retry."""
+    db_path = http_recovery_env["db"]
+    token = "owner_token_trusted_cfg_test_32_ch"
+    owner_id = hash_owner_token(token)
+
+    # Explicitly configure trusted domain in owner policy
+    policy = get_owner_policy(owner_id, db_path=db_path)
+    policy.allowed_domains = ["httpbin.org"]
+    policy.trusted_idempotency_domains = ["httpbin.org"]
+    set_owner_policy(owner_id, policy, db_path=db_path)
+
+    task = Ledger.create_task("Trusted idempotency task", owner_id=owner_id, db_path=db_path)
+    steps = Ledger.add_steps(
+        task.id,
+        [
+            {
+                "idx": 1,
+                "intent": "Mutation to trusted idempotency target",
+                "tool": "http_request",
+                "args": {
+                    "url": "https://httpbin.org/post",
+                    "method": "POST",
+                    "json": {"item": "widget", "qty": 2},
                 },
                 "probe": {"expected_status": [200, 201]},
                 "depends_on": [],
@@ -79,179 +208,88 @@ def test_interrupted_http_mutation_with_idempotency_reuses_stable_key(http_recov
     )
     step1_id = steps[0].id
 
-    recorded_http_calls = []
+    recorded_calls = []
 
-    def mock_http_request(url, method="GET", headers=None, data=None, json_data=None,
-                          timeout=5.0, allowed_domains=None, idempotency_key=None,
-                          idempotency_header="Idempotency-Key"):
-        recorded_http_calls.append({
-            "url": url,
-            "method": method,
-            "headers": headers,
-            "idempotency_key": idempotency_key,
-            "idempotency_header": idempotency_header,
-        })
-        return {
-            "url": url,
-            "method": method,
-            "status_code": 201,
-            "headers": {"content-type": "application/json"},
-            "body": json.dumps({"id": "inv_123", "status": "created"}),
-            "body_length": 42,
-            "idempotency_key": idempotency_key,
-        }
-
-    # 1. Step starts execution: key is generated and persisted to SQLite step args before network call.
-    # Simulate: process is killed / interrupted during the HTTP request before any response is recorded.
     def interrupt_during_request(url, method="GET", headers=None, data=None, json_data=None,
                                  timeout=5.0, allowed_domains=None, idempotency_key=None,
                                  idempotency_header="Idempotency-Key"):
-        recorded_http_calls.append({
+        recorded_calls.append({
             "url": url,
             "method": method,
             "headers": headers,
             "idempotency_key": idempotency_key,
             "idempotency_header": idempotency_header,
         })
-        raise KeyboardInterrupt("Simulated crash / SIGKILL mid-flight before HTTP response")
+        raise KeyboardInterrupt("Simulated crash mid-flight before HTTP response")
 
+    # 1. Step starts running: stable key is generated and saved to SQLite before network call
     with patch("backend.executor.http_request", side_effect=interrupt_during_request):
         try:
             execute_step(step1_id, db_path=db_path)
         except KeyboardInterrupt:
             pass
 
-    # Verify the initial attempt sent the request and persisted the key before crash
-    assert len(recorded_http_calls) == 1
-    initial_key = recorded_http_calls[0]["idempotency_key"]
+    assert len(recorded_calls) == 1
+    initial_key = recorded_calls[0]["idempotency_key"]
     assert initial_key is not None
     assert initial_key.startswith("idem_")
 
+    # The stable key was saved in SQLite
     crashed_step = Ledger.get_step(step1_id, db_path=db_path)
-    # Step was left in 'running' status with NO result recorded
     assert crashed_step.status == "running"
-    assert crashed_step.result_json is None
-
-    # But the stable idempotency key WAS safely persisted in SQLite args_json!
     persisted_args = json.loads(crashed_step.args_json)
     assert persisted_args["idempotency_key"] == initial_key
 
-    # Clear call records to verify ONLY calls made during restart recovery
-    recorded_http_calls.clear()
+    # 2. Restart and recover
+    recorded_calls.clear()
 
-    # 3. Process restart & recovery
-    with patch("backend.executor.call_llm", return_value="Created invoice."),          patch("backend.executor.http_request", side_effect=mock_http_request):
+    def successful_request(url, method="GET", headers=None, data=None, json_data=None,
+                           timeout=5.0, allowed_domains=None, idempotency_key=None,
+                           idempotency_header="Idempotency-Key"):
+        recorded_calls.append({"idempotency_key": idempotency_key})
+        return {
+            "url": url,
+            "method": method,
+            "status_code": 201,
+            "headers": {"content-type": "application/json"},
+            "body": json.dumps({"id": "widget_1", "status": "created"}),
+            "body_length": 38,
+            "idempotency_key": idempotency_key,
+        }
 
-        recovered_task = run_task(task.id, db_path=db_path)
+    with patch("backend.executor.call_llm", return_value="Created widget."),          patch("backend.executor.http_request", side_effect=successful_request):
 
-    # 4. Verify recovery invariants:
-    # A. One HTTP request was sent on retry
-    assert len(recorded_http_calls) == 1
-    # B. The retry MUST use the EXACT SAME stable idempotency key!
-    retry_key = recorded_http_calls[0]["idempotency_key"]
-    assert retry_key == initial_key, f"Expected identical key {initial_key}, got {retry_key}"
+        final_task = run_task(task.id, db_path=db_path)
 
-    # C. Task is complete and step is verified
-    final_step = Ledger.get_step(step1_id, db_path=db_path)
-    assert final_step.status == "verified"
-    assert recovered_task.status == "complete"
+    # Invariants:
+    # 1. The retry sent exactly one request
+    assert len(recorded_calls) == 1
+    # 2. The retry reused the EXACT SAME idempotency key
+    assert recorded_calls[0]["idempotency_key"] == initial_key
+    # 3. Step is verified and task is complete
+    assert final_task.status == "complete"
+    assert Ledger.get_step(step1_id, db_path=db_path).status == "verified"
 
 
-def test_interrupted_mutation_without_deduplication_blocks_and_requires_authorization(http_recovery_env):
-    """Proof that when an interrupted HTTP mutation does NOT support idempotency, recovery
-    does NOT blindly re-execute it. It records an explicit ambiguous state and pauses for owner decision."""
+def test_ambiguous_mutation_approval_reason_clarity_and_decision_flow(http_recovery_env):
+    """Test that the approval request clearly explains the unknown remote outcome and retry risk,
+    and that approving resumes/retries while denying fails without network calls."""
     db_path = http_recovery_env["db"]
-    token = "owner_token_ambig_test_32_chars__"
+    token = "owner_token_appr_clarity_test_32_"
     owner_id = hash_owner_token(token)
 
-    task = Ledger.create_task("Non-idempotent legacy transfer", owner_id=owner_id, db_path=db_path)
+    task = Ledger.create_task("Approval clarity task", owner_id=owner_id, db_path=db_path)
     steps = Ledger.add_steps(
         task.id,
         [
             {
                 "idx": 1,
-                "intent": "Non-idempotent wire transfer mutation",
+                "intent": "High value bank transfer",
                 "tool": "http_request",
                 "args": {
                     "url": "https://httpbin.org/post",
                     "method": "POST",
-                    "data": "wire_transfer_data",
-                    "supports_idempotency": False,  # Deduplication unavailable!
-                },
-                "probe": {"expected_status": 200},
-                "depends_on": [],
-            },
-            {
-                "idx": 2,
-                "intent": "Subsequent report step",
-                "tool": "write_file",
-                "args": {"path": "report.txt", "content": "transfer done"},
-                "probe": {},
-                "depends_on": [1],
-            },
-        ],
-        db_path=db_path,
-    )
-    s1_id = steps[0].id
-    s2_id = steps[1].id
-
-    # 1. Step 1 starts running and process is interrupted mid-flight
-    Ledger.mark_step_running(s1_id, db_path=db_path)
-    Ledger.update_task_status(task.id, "running", db_path=db_path)
-
-    recorded_http_calls = []
-
-    def mock_http_request(*args, **kwargs):
-        recorded_http_calls.append(kwargs)
-        return {"status_code": 200, "body": "ok", "url": "https://httpbin.org/post"}
-
-    # 2. Invoke task recovery
-    with patch("backend.executor.http_request", side_effect=mock_http_request):
-        recovered_task = run_task(task.id, db_path=db_path)
-
-    # 3. Verify safety invariants:
-    # A. ZERO HTTP requests were sent! No blind retry!
-    assert len(recorded_http_calls) == 0, "CRITICAL: Non-idempotent mutation was re-executed without authorization!"
-
-    # B. Step 1 is in explicit 'blocked' state with explanatory block_reason
-    s1 = Ledger.get_step(s1_id, db_path=db_path)
-    assert s1.status == "blocked"
-    assert s1.block_reason is not None
-    assert "Ambiguous external HTTP mutation" in s1.block_reason
-    assert "idempotency" in s1.block_reason.lower()
-
-    # C. Step 2 was NOT executed
-    s2 = Ledger.get_step(s2_id, db_path=db_path)
-    assert s2.status == "pending"
-
-    # D. An approval was created in the ledger requiring owner decision
-    approvals = get_owner_approvals(owner_id, status="pending", db_path=db_path)
-    assert len(approvals) == 1
-    assert approvals[0]["step_id"] == s1_id
-    assert approvals[0]["task_id"] == task.id
-
-    # E. Task is paused waiting for reconciliation / approval
-    assert recovered_task.status == "paused"
-
-
-def test_ambiguous_mutation_owner_approval_decision_flow(http_recovery_env):
-    """Test that an owner can explicitly authorize or deny resuming an ambiguous mutation."""
-    db_path = http_recovery_env["db"]
-    token = "owner_token_auth_flow_test_32_chars"
-    owner_id = hash_owner_token(token)
-
-    task = Ledger.create_task("Ambiguous mutation approval task", owner_id=owner_id, db_path=db_path)
-    steps = Ledger.add_steps(
-        task.id,
-        [
-            {
-                "idx": 1,
-                "intent": "External mutation requiring decision",
-                "tool": "http_request",
-                "args": {
-                    "url": "https://httpbin.org/post",
-                    "method": "POST",
-                    "supports_idempotency": False,
+                    "json": {"transfer": 100000},
                 },
                 "probe": {"expected_status": 200},
                 "depends_on": [],
@@ -261,49 +299,47 @@ def test_ambiguous_mutation_owner_approval_decision_flow(http_recovery_env):
     )
     step_id = steps[0].id
 
-    # Simulate crash in 'running'
+    # Crash during flight
     Ledger.mark_step_running(step_id, db_path=db_path)
     Ledger.recover_interrupted_step(Ledger.get_step(step_id, db_path=db_path), task.id, db_path=db_path)
 
-    # Step is blocked
-    s = Ledger.get_step(step_id, db_path=db_path)
-    assert s.status == "blocked"
     approvals = get_owner_approvals(owner_id, status="pending", db_path=db_path)
     assert len(approvals) == 1
-    appr_id = approvals[0]["id"]
+    reason = approvals[0]["reason"]
 
-    # Branch A: Owner approves the resume decision
-    with patch("backend.executor.call_llm", return_value="Authorized execution."),          patch("backend.executor.http_request", return_value={"status_code": 200, "body": "ok", "url": "https://httpbin.org/post", "body_length": 2}):
+    # Verify clarity of approval reason
+    assert "Ambiguous external HTTP mutation (POST https://httpbin.org/post)" in reason
+    assert "remote outcome may already have taken effect or may be unknown" in reason
+    assert "Approving this request will re-dispatch (retry) the mutation" in reason
+    assert "denying it will mark the step failed without re-sending the request" in reason
 
-        res = approve_request(appr_id, owner_id=owner_id, db_path=db_path)
+    # Branch A: Owner approves -> resumes and retries
+    with patch("backend.executor.call_llm", return_value="Transfer executed."),          patch("backend.executor.http_request", return_value={"status_code": 200, "body": "ok", "url": "https://httpbin.org/post", "body_length": 2}):
+
+        res = approve_request(approvals[0]["id"], owner_id=owner_id, db_path=db_path)
         assert res["status"] == "approved"
 
-        # Step is re-queued to pending with block_reason cleared
-        s_after_approve = Ledger.get_step(step_id, db_path=db_path)
-        assert s_after_approve.status == "pending"
-        assert s_after_approve.block_reason is None
-
-        # Task can now run to completion
         final_task = run_task(task.id, db_path=db_path)
         assert final_task.status == "complete"
         assert Ledger.get_step(step_id, db_path=db_path).status == "verified"
 
 
-def test_ambiguous_mutation_owner_deny_flow(http_recovery_env):
-    """Test that an owner denying an ambiguous mutation halts the task with status 'failed'."""
+def test_ambiguous_mutation_owner_deny_prevents_network_dispatch(http_recovery_env):
+    """Test that denying an ambiguous mutation halts the task with status 'failed'
+    and dispatches ZERO network requests."""
     db_path = http_recovery_env["db"]
-    token = "owner_token_deny_flow_test_32_chars"
+    token = "owner_token_deny_prevents_dispatch_3"
     owner_id = hash_owner_token(token)
 
-    task = Ledger.create_task("Ambiguous mutation deny task", owner_id=owner_id, db_path=db_path)
+    task = Ledger.create_task("Deny prevents dispatch task", owner_id=owner_id, db_path=db_path)
     steps = Ledger.add_steps(
         task.id,
         [
             {
                 "idx": 1,
-                "intent": "Rejected external mutation",
+                "intent": "Ambiguous operation to deny",
                 "tool": "http_request",
-                "args": {"url": "https://httpbin.org/post", "method": "POST", "supports_idempotency": False},
+                "args": {"url": "https://httpbin.org/post", "method": "POST"},
                 "probe": {},
                 "depends_on": [],
             }
@@ -312,20 +348,22 @@ def test_ambiguous_mutation_owner_deny_flow(http_recovery_env):
     )
     step_id = steps[0].id
 
-    # Simulate crash in 'running'
     Ledger.mark_step_running(step_id, db_path=db_path)
     Ledger.recover_interrupted_step(Ledger.get_step(step_id, db_path=db_path), task.id, db_path=db_path)
 
     approvals = get_owner_approvals(owner_id, status="pending", db_path=db_path)
     appr_id = approvals[0]["id"]
 
-    # Owner denies the request
-    res = deny_request(appr_id, owner_id=owner_id, db_path=db_path)
-    assert res["status"] == "denied"
+    recorded_calls = []
+    with patch("backend.executor.http_request", side_effect=lambda *a, **kw: recorded_calls.append(kw)):
+        deny_res = deny_request(appr_id, owner_id=owner_id, db_path=db_path)
+        final_task = run_task(task.id, db_path=db_path)
 
-    s_denied = Ledger.get_step(step_id, db_path=db_path)
-    assert s_denied.status == "failed"
-    assert "Denied" in (s_denied.error or "")
+    # ZERO network calls dispatched
+    assert len(recorded_calls) == 0
+    assert deny_res["status"] == "denied"
+    assert Ledger.get_step(step_id, db_path=db_path).status == "failed"
+    assert final_task.status == "failed"
 
 
 def test_completed_mutation_in_done_state_does_not_repeat_remote_call(http_recovery_env):
@@ -366,7 +404,6 @@ def test_completed_mutation_in_done_state_does_not_repeat_remote_call(http_recov
         return {"status_code": 201, "body": "ok"}
 
     with patch("backend.executor.http_request", side_effect=mock_http_request):
-        # Resume task
         final_task = run_task(task.id, db_path=db_path)
 
     # Invariant: NO new HTTP calls were made!
@@ -382,6 +419,12 @@ def test_recovery_preserves_policy_on_resumed_http_mutation(http_recovery_env):
     token = "owner_token_policy_http_test_32_c"
     owner_id = hash_owner_token(token)
 
+    # Owner policy trusts the domain for idempotency, but explicitly disallows it in allowed_domains
+    policy = get_owner_policy(owner_id, db_path=db_path)
+    policy.allowed_domains = ["httpbin.org"]  # unauthorized-payment.org is forbidden!
+    policy.trusted_idempotency_domains = ["unauthorized-payment.org"]
+    set_owner_policy(owner_id, policy, db_path=db_path)
+
     task = Ledger.create_task("Policy HTTP Mutation Task", owner_id=owner_id, db_path=db_path)
     steps = Ledger.add_steps(
         task.id,
@@ -393,7 +436,6 @@ def test_recovery_preserves_policy_on_resumed_http_mutation(http_recovery_env):
                 "args": {
                     "url": "https://unauthorized-payment.org/charge",
                     "method": "POST",
-                    "supports_idempotency": True,
                 },
                 "probe": {},
                 "depends_on": [],

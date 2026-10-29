@@ -7,6 +7,7 @@ from backend.tools.http import (
     http_request,
     is_http_mutation_step,
     target_supports_idempotency,
+    is_trusted_idempotency_target,
 )
 from backend.tools.sandbox import get_workspace_dir, resolve_workspace_path
 from backend.tools.shell import run_shell
@@ -20,6 +21,7 @@ __all__ = [
     "http_request",
     "is_http_mutation_step",
     "target_supports_idempotency",
+    "is_trusted_idempotency_target",
     "get_workspace_dir",
     "resolve_workspace_path",
     "get_file_sha256",
