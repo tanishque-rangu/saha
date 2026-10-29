@@ -89,30 +89,55 @@ def test_drift_and_drift_events(temp_db):
 def test_append_only_preserves_history(temp_db):
     task = Ledger.create_task("Append Only Test", db_path=temp_db)
     initial_steps = [
-        {"intent": "Step 1", "tool": "write_file", "args": {"path": "1.txt"}},
-        {"intent": "Step 2", "tool": "write_file", "args": {"path": "2.txt"}},
+        {"intent": "Step 1", "tool": "write_file", "args": {"path": "1.txt"}, "depends_on": []},
+        {"intent": "Step 2", "tool": "write_file", "args": {"path": "2.txt"}, "depends_on": [1]},
     ]
     steps = Ledger.add_steps(task.id, initial_steps, db_path=temp_db)
     assert len(steps) == 2
+    assert steps[1].to_dict()["depends_on"] == [1]
 
-    # Simulate Step 1 drift and repair append
-    Ledger.mark_step_drifted(steps[0].id, "file missing", {}, db_path=temp_db)
+    # Step 1 verified, then reality drifts
+    Ledger.mark_step_running(steps[0].id, db_path=temp_db)
+    Ledger.mark_step_done(steps[0].id, {}, db_path=temp_db)
+    Ledger.mark_step_drifted(steps[0].id, "file missing", {"passed": False}, db_path=temp_db)
 
-    # Append new repair step
-    repair_step = Ledger.add_steps(task.id, [{"intent": "Repair Step 1", "tool": "write_file", "args": {"path": "1.txt"}}], db_path=temp_db)
-    assert len(repair_step) == 3
+    # Append new repair steps
+    new_steps = [
+        {"intent": "Repair Step 1", "tool": "write_file", "args": {"path": "1.txt"}, "depends_on": []},
+        {"intent": "Recreate Step 2", "tool": "write_file", "args": {"path": "2.txt"}, "depends_on": [3]},
+    ]
+    added = Ledger.add_steps(task.id, new_steps, db_path=temp_db)
+    repair_step_1 = added[-2]
+    repair_step_2 = added[-1]
 
-    # Supersede the drifted step
-    Ledger.supersede_steps([steps[0].id], superseded_by_id=repair_step[-1].id, db_path=temp_db)
+    # Drifted step stays drifted (never superseded); resolved_by points to repair step
+    Ledger.supersede_steps([steps[0].id], superseded_by_id=repair_step_1.id, db_path=temp_db)
+    drifted_step = Ledger.get_step(steps[0].id, db_path=temp_db)
+    assert drifted_step.status == "drifted"  # Protected from overwrite!
 
-    # Verify that original row is NOT deleted
+    Ledger.mark_step_resolved(steps[0].id, repair_step_1.id, db_path=temp_db)
+    drifted_step = Ledger.get_step(steps[0].id, db_path=temp_db)
+    assert drifted_step.resolved_by == repair_step_1.id
+
+    # Dependent Step 2 transitions to superseded
+    Ledger.supersede_steps([steps[1].id], superseded_by_id=repair_step_2.id, db_path=temp_db)
+    step2 = Ledger.get_step(steps[1].id, db_path=temp_db)
+    assert step2.status == "superseded"
+    assert step2.superseded_by == repair_step_2.id
+
+    # Verify that ALL original rows still exist (none deleted)
     all_steps = Ledger.get_steps(task.id, include_superseded=True, db_path=temp_db)
-    assert len(all_steps) == 3
-    assert all_steps[0].status == "superseded"
-    assert all_steps[0].superseded_by == repair_step[-1].id
+    assert len(all_steps) == 4
 
-    # Active steps contain only non-superseded
-    active = Ledger.get_steps(task.id, include_superseded=False, db_path=temp_db)
-    assert len(active) == 2
-    assert active[0].id == steps[1].id
-    assert active[1].id == repair_step[-1].id
+    # Verify task complete condition:
+    # 1) Mark repairs verified
+    Ledger.mark_step_running(repair_step_1.id, db_path=temp_db)
+    Ledger.mark_step_done(repair_step_1.id, {}, db_path=temp_db)
+    Ledger.mark_step_verified(repair_step_1.id, {"passed": True}, db_path=temp_db)
+
+    Ledger.mark_step_running(repair_step_2.id, db_path=temp_db)
+    Ledger.mark_step_done(repair_step_2.id, {}, db_path=temp_db)
+    Ledger.mark_step_verified(repair_step_2.id, {"passed": True}, db_path=temp_db)
+
+    summary = Ledger.get_task_summary(task.id, db_path=temp_db)
+    assert summary["is_complete"] is True

@@ -54,15 +54,18 @@ def main():
     step_plans = generate_plan(goal)
     print(f"    ✔ Plan generated: {len(step_plans)} steps with content briefs.")
 
-    steps_data = [
-        {
+    steps_data = []
+    for sp in step_plans:
+        d_on = list(getattr(sp, "depends_on", []))
+        if not d_on and ("combine" in sp.intent.lower() or "summary" in sp.intent.lower()):
+            d_on = [1, 2]
+        steps_data.append({
             "intent": sp.intent,
             "tool": sp.tool,
             "args": sp.args,
             "probe": sp.probe,
-        }
-        for sp in step_plans
-    ]
+            "depends_on": d_on,
+        })
     Ledger.add_steps(task.id, steps_data)
 
     initial_summary = Ledger.get_task_summary(task.id)

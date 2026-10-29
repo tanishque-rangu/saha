@@ -26,6 +26,7 @@ class StepPlan(BaseModel):
     tool: ToolType
     args: Dict[str, Any]
     probe: Dict[str, Any] = Field(default_factory=dict)
+    depends_on: List[int] = Field(default_factory=list)
 
 
 class TaskPlan(BaseModel):
@@ -61,6 +62,8 @@ CRITICAL RULES:
   - tool: tool name
   - args: dictionary of tool arguments
   - probe: deterministic verification criteria (e.g. expected_output, expected_file, expected_status)
+  - depends_on: list of previous 1-based step idx integers that this step depends on (empty list [] if independent). For example, if step 3 combines files written by steps 1 and 2, depends_on is [1, 2].
+- Keep plans direct and minimal. When combining or summarizing previous files, use `write_file` directly with `depends_on: [indices]` rather than creating redundant intermediate `read_file` steps.
 
 Output MUST be a JSON object with a single key "steps":
 {{
@@ -70,7 +73,8 @@ Output MUST be a JSON object with a single key "steps":
       "intent": "Write Hyderabad history facts",
       "tool": "write_file",
       "args": {{"path": "facts1.txt", "content_brief": "Two bullet points about the founding of Hyderabad by Muhammad Quli Qutb Shah in 1591."}},
-      "probe": {{}}
+      "probe": {{}},
+      "depends_on": []
     }}
   ]
 }}

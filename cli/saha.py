@@ -5,12 +5,19 @@ Supports:
   python -m cli.saha status <id>
   python -m cli.saha resume <id>
   python -m cli.saha metrics
+
+If SAHA_API_URL is configured (e.g. http://localhost:8000), commands route
+through the HTTP API. Otherwise, operations execute in local mode.
 """
 
 import argparse
 import json
+import os
 import sys
-from typing import Any, Dict, List
+import time
+from typing import Any, Dict, List, Optional
+
+import httpx
 
 from backend.db import get_llm_metrics
 from backend.executor import run_task
@@ -21,6 +28,11 @@ from backend.resume import resume_task
 # UTF-8 stdout configuration for Windows terminals
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
+
+
+def get_api_url() -> Optional[str]:
+    url = os.getenv("SAHA_API_URL")
+    return url.rstrip("/") if url else None
 
 
 def print_step_table(steps: List[Dict[str, Any]], title: str = "Execution Timeline"):
@@ -52,6 +64,8 @@ def print_step_table(steps: List[Dict[str, Any]], title: str = "Execution Timeli
 
         if s.get("drift_reason"):
             print(f"       └─ Drift Reason: {s['drift_reason']}")
+        if s.get("resolved_by"):
+            print(f"       └─ Resolved By: Step ID {s['resolved_by'][:8]}...")
         if s.get("superseded_by"):
             print(f"       └─ Superseded By: Step ID {s['superseded_by'][:8]}...")
         if s.get("error"):
@@ -61,7 +75,39 @@ def print_step_table(steps: List[Dict[str, Any]], title: str = "Execution Timeli
 
 
 def cmd_run(goal: str, db_path: str = None):
-    print(f"\n[Saha] Initializing Task...")
+    api_url = get_api_url()
+    if api_url:
+        print(f"\n[Saha CLI -> API: {api_url}] Creating task...")
+        with httpx.Client(base_url=api_url, timeout=60.0) as client:
+            resp = client.post("/tasks", json={"goal": goal})
+            if resp.status_code != 200:
+                print(f"Error creating task: {resp.text}")
+                return None
+            data = resp.json()
+            task_id = data["task"]["id"]
+            print(f"Task created: {task_id}")
+            print_step_table(data["steps"], title=f"Planned Steps (Task: {task_id[:8]}...)")
+
+            print(f"[Saha CLI -> API] Launching execution...")
+            client.post(f"/tasks/{task_id}/run")
+
+            # Poll until task completes
+            while True:
+                time.sleep(1.0)
+                detail = client.get(f"/tasks/{task_id}").json()
+                status = detail["task"]["status"]
+                if status not in ("planning", "running"):
+                    print_step_table(detail["steps"], title=f"Execution Results (Status: {status.upper()})")
+                    break
+
+            metrics = client.get("/metrics").json()
+            print("Telemetry Metrics (llm_calls):")
+            for m in metrics["models"]:
+                print(f"  • {m['model']} ({m['role']}): {m['call_count']} calls, avg {m['avg_latency_ms']} ms")
+            return detail["task"]
+
+    # Local execution mode
+    print(f"\n[Saha] Initializing Task (Local Mode)...")
     print(f"Goal: {goal}")
 
     task = Ledger.create_task(goal, db_path=db_path)
@@ -71,15 +117,18 @@ def cmd_run(goal: str, db_path: str = None):
     step_plans = generate_plan(goal)
     print(f"[Saha] Plan generated: {len(step_plans)} steps")
 
-    steps_data = [
-        {
+    steps_data = []
+    for sp in step_plans:
+        d_on = list(getattr(sp, "depends_on", []))
+        if not d_on and ("combine" in sp.intent.lower() or "summary" in sp.intent.lower()):
+            d_on = [1, 2]
+        steps_data.append({
             "intent": sp.intent,
             "tool": sp.tool,
             "args": sp.args,
             "probe": sp.probe,
-        }
-        for sp in step_plans
-    ]
+            "depends_on": d_on,
+        })
     Ledger.add_steps(task.id, steps_data, db_path=db_path)
 
     summary = Ledger.get_task_summary(task.id, db_path=db_path)
@@ -100,7 +149,17 @@ def cmd_run(goal: str, db_path: str = None):
 
 
 def cmd_status(task_id: str, db_path: str = None):
-    summary = Ledger.get_task_summary(task_id, db_path=db_path)
+    api_url = get_api_url()
+    if api_url:
+        with httpx.Client(base_url=api_url, timeout=30.0) as client:
+            resp = client.get(f"/tasks/{task_id}")
+            if resp.status_code != 200:
+                print(f"Error fetching task: {resp.text}")
+                return
+            summary = resp.json()
+    else:
+        summary = Ledger.get_task_summary(task_id, db_path=db_path)
+
     task = summary["task"]
     print(f"\nTask ID: {task['id']}")
     print(f"Goal:    {task['goal']}")
@@ -118,7 +177,22 @@ def cmd_status(task_id: str, db_path: str = None):
 
 
 def cmd_resume(task_id: str, db_path: str = None):
-    print(f"\n[Saha] Reconciling Task {task_id} with reality...")
+    api_url = get_api_url()
+    if api_url:
+        print(f"\n[Saha CLI -> API: {api_url}] Resuming task {task_id}...")
+        with httpx.Client(base_url=api_url, timeout=60.0) as client:
+            client.post(f"/tasks/{task_id}/resume")
+            while True:
+                time.sleep(1.0)
+                detail = client.get(f"/tasks/{task_id}").json()
+                status = detail["task"]["status"]
+                if status not in ("planning", "running"):
+                    print_step_table(detail["steps"], title=f"Reconciled Ledger (Status: {status.upper()})")
+                    break
+            return
+
+    # Local mode
+    print(f"\n[Saha] Reconciling Task {task_id} with reality (Local Mode)...")
     result = resume_task(task_id, db_path=db_path)
 
     drift_report = result["drift_report"]
@@ -139,7 +213,13 @@ def cmd_resume(task_id: str, db_path: str = None):
 
 
 def cmd_metrics(db_path: str = None):
-    metrics = get_llm_metrics(db_path=db_path)
+    api_url = get_api_url()
+    if api_url:
+        with httpx.Client(base_url=api_url, timeout=10.0) as client:
+            metrics = client.get("/metrics").json()
+    else:
+        metrics = get_llm_metrics(db_path=db_path)
+
     print("\n" + "=" * 60)
     print("Saha LLM Performance Metrics (llm_calls)")
     print("=" * 60)

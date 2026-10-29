@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Saha — Persistent Personal AI</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Outfit, Inter, JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Outfit', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            saha: {
+              50: '#ecfdf5',
+              400: '#34d399',
+              500: '#10b981',
+              600: '#059669',
+              900: '#064e3b',
+              950: '#022c22',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #030712;
+      color: #f3f4f6;
+    }
+    .glass-panel {
+      background: rgba(17, 24, 39, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(55, 65, 81, 0.5);
+    }
+    .glow-emerald {
+      box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.3);
+    }
+    .glow-amber {
+      box-shadow: 0 0 25px -5px rgba(245, 158, 11, 0.35);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans selection:bg-emerald-500 selection:text-black">
+
+  <!-- Header -->
+  <header class="border-b border-gray-800 bg-gray-950/80 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div>
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-300 flex items-center justify-center font-display font-bold text-black text-xl shadow-lg shadow-emerald-500/20">
+            S
+          </div>
+          <span class="font-display font-bold text-2xl tracking-tight text-white">Saha</span>
+          <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Persistent AI</span>
+          <span id="demoBadge" class="hidden px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30">Demo Mode</span>
+        </div>
+        <p class="text-xs sm:text-sm text-gray-400 mt-1 font-medium">
+          <span class="text-emerald-400 font-semibold">Tagline:</span> Your work should never have to start over just because your AI does.
+        </p>
+      </div>
+
+      <div class="flex items-center gap-4 text-xs">
+        <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-900 border border-gray-800 text-gray-300">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="systemStatus">Ledger Active</span>
+        </div>
+        <button onclick="refreshData()" class="p-2 text-gray-400 hover:text-white transition" title="Refresh">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+    <!-- Goal Input Section -->
+    <section class="glass-panel rounded-2xl p-5 shadow-xl">
+      <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-2">New Goal Input</h2>
+      <div class="flex flex-col sm:flex-row gap-3">
+        <textarea id="goalInput" rows="2" maxlength="300" placeholder="Describe the goal for Saha to plan, execute, and verify against reality..." class="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"></textarea>
+        <button id="createTaskBtn" onclick="createTask()" class="sm:self-stretch px-6 py-3 bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-black font-semibold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 whitespace-nowrap">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          Plan & Create
+        </button>
+      </div>
+
+      <!-- Example Goal Chips -->
+      <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+        <span class="text-gray-400 font-medium">Examples:</span>
+        <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg border border-gray-700 transition text-left">
+          Hyderabad facts summary & reachability check
+        </button>
+        <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg border border-gray-700 transition text-left">
+          Write state verification report and test connectivity
+        </button>
+        <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg border border-gray-700 transition text-left">
+          Synthesize ledger architecture notes and verify hashes
+        </button>
+      </div>
+    </section>
+
+    <!-- Workspace & Task Inspector Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- Left Column: Tasks List (4 cols) -->
+      <div class="lg:col-span-4 space-y-4">
+        <div class="glass-panel rounded-2xl p-4">
+          <div class="flex items-center justify-between pb-3 border-b border-gray-800">
+            <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Tasks Ledger</h3>
+            <span id="taskCountBadge" class="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full font-mono">0</span>
+          </div>
+          <div id="tasksList" class="mt-3 space-y-2 max-h-[600px] overflow-y-auto pr-1">
+            <div class="text-xs text-gray-500 py-4 text-center">Loading tasks ledger...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Active Task Timeline & Inspector (8 cols) -->
+      <div class="lg:col-span-8 space-y-6">
+
+        <!-- Selected Task Card -->
+        <div id="taskDetailCard" class="glass-panel rounded-2xl p-6 hidden space-y-5">
+          <!-- Task Header -->
+          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-gray-800">
+            <div>
+              <div class="flex items-center gap-2">
+                <span id="taskStatusPill" class="px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-gray-800 text-gray-300">
+                  Planning
+                </span>
+                <span id="taskIdLabel" class="text-xs text-gray-400 font-mono">Task ID: --</span>
+              </div>
+              <h2 id="taskGoalLabel" class="text-lg font-bold text-white mt-1.5 font-display">--</h2>
+            </div>
+
+            <!-- Task Actions -->
+            <div class="flex flex-wrap items-center gap-2">
+              <button id="runTaskBtn" onclick="runActiveTask()" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Run Task
+              </button>
+              <button id="sabotageBtn" onclick="sabotageActiveTask()" class="px-3.5 py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-semibold rounded-lg transition flex items-center gap-1.5" title="Deletes artifact directly from disk without touching database">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                Simulate Drift
+              </button>
+              <button id="resumeBtn" onclick="resumeActiveTask()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                Resume & Reconcile
+              </button>
+            </div>
+          </div>
+
+          <!-- Prominent Reality Drift Banner -->
+          <div id="driftBanner" class="hidden rounded-xl border border-amber-500/50 bg-amber-950/30 p-4 glow-amber space-y-3">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-2.5 text-amber-400 font-bold text-sm">
+                <svg class="w-5 h-5 text-amber-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                <span>REALITY DRIFT DETECTED</span>
+              </div>
+              <span class="text-xs font-mono text-amber-300/80 bg-amber-500/10 px-2 py-0.5 rounded">FAST Model Active</span>
+            </div>
+            <div class="bg-gray-900/80 rounded-lg p-3 border border-amber-500/20 text-xs space-y-1.5">
+              <div class="text-gray-400 font-semibold uppercase text-[10px] tracking-wider">Fast Auditor Explanation (Nano-30B):</div>
+              <p id="driftExplanation" class="text-amber-200 text-sm font-medium italic">--</p>
+              <div id="driftDetails" class="text-gray-400 font-mono text-[11px] pt-1 border-t border-gray-800">--</div>
+            </div>
+          </div>
+
+          <!-- Steps Timeline -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Audit Timeline & Verification Probes</h3>
+              <span id="timelineStats" class="text-xs text-gray-500 font-mono">0 steps</span>
+            </div>
+
+            <div id="stepsTimeline" class="space-y-3">
+              <!-- Rendered Step Cards -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyTaskPlaceholder" class="glass-panel rounded-2xl p-12 text-center space-y-3">
+          <div class="w-12 h-12 rounded-full bg-gray-900 mx-auto flex items-center justify-center text-gray-500">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+          </div>
+          <h3 class="text-sm font-semibold text-gray-300">No Task Selected</h3>
+          <p class="text-xs text-gray-500 max-w-sm mx-auto">Select an existing task from the ledger on the left, or input a new goal above to generate an execution plan.</p>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-900 bg-gray-950 py-5 text-center text-xs text-gray-500 mt-auto">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+      <div>
+        Powered by <span class="text-gray-300 font-semibold">Nebius Token Factory</span> & <span class="text-gray-300 font-semibold">NVIDIA Nemotron</span> (Ultra-550B, Super-120B, Nano-30B)
+      </div>
+      <div>
+        Nebius x NVIDIA AI Hackathon &bull; Personal AI Track
+      </div>
+    </div>
+  </footer>
+
+  <!-- Vanilla JS Engine -->
+  <script>
+    let activeTaskId = null;
+    let pollInterval = null;
+
+    const chipGoals = {
+      0: "Create two small data files with different facts about Hyderabad, combine them into a summary file, and check that https://example.com is reachable.",
+      1: "Write a small diagnostic script in the task workspace, run it, and confirm that https://httpbin.org is reachable.",
+      2: "Create an architectural principles file notes.txt, read its content back, and verify its sha256 checksum."
+    };
+
+    function setGoalChip(btn) {
+      const text = btn.innerText.trim();
+      if (text.includes("Hyderabad")) {
+        document.getElementById("goalInput").value = chipGoals[0];
+      } else if (text.includes("diagnostic")) {
+        document.getElementById("goalInput").value = chipGoals[1];
+      } else {
+        document.getElementById("goalInput").value = chipGoals[2];
+      }
+    }
+
+    async function checkHealth() {
+      try {
+        const res = await fetch("/health");
+        const data = await res.json();
+        if (data.demo_mode) {
+          document.getElementById("demoBadge").classList.remove("hidden");
+        }
+      } catch (e) {
+        console.error("Health check error:", e);
+      }
+    }
+
+    async function loadTasks() {
+      try {
+        const res = await fetch("/tasks");
+        const data = await res.json();
+        const list = document.getElementById("tasksList");
+        const tasks = data.tasks || [];
+        document.getElementById("taskCountBadge").innerText = tasks.length;
+
+        if (tasks.length === 0) {
+          list.innerHTML = `<div class="text-xs text-gray-500 py-4 text-center">No tasks recorded yet.</div>`;
+          return;
+        }
+
+        list.innerHTML = tasks.map(t => {
+          const isSelected = t.id === activeTaskId;
+          const statusColors = {
+            complete: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+            running: 'bg-blue-500/10 text-blue-400 border-blue-500/30 animate-pulse',
+            planning: 'bg-gray-800 text-gray-300 border-gray-700',
+            failed: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+            paused: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+          };
+          const pill = statusColors[t.status] || 'bg-gray-800 text-gray-300';
+
+          return `
+            <div onclick="selectTask('${t.id}')" class="p-3 rounded-xl border transition cursor-pointer ${isSelected ? 'bg-gray-800/90 border-emerald-500/50 shadow-md' : 'bg-gray-900/60 border-gray-800 hover:border-gray-700'}">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] font-mono text-gray-500">${t.id.substring(0, 8)}...</span>
+                <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${pill}">${t.status}</span>
+              </div>
+              <div class="text-xs text-gray-200 font-medium line-clamp-2">${t.goal}</div>
+              <div class="text-[10px] text-gray-500 mt-1">${new Date(t.created_at).toLocaleTimeString()}</div>
+            </div>
+          `;
+        }).join('');
+
+        if (!activeTaskId && tasks.length > 0) {
+          selectTask(tasks[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to load tasks:", err);
+      }
+    }
+
+    async function selectTask(taskId) {
+      activeTaskId = taskId;
+      document.getElementById("emptyTaskPlaceholder").classList.add("hidden");
+      document.getElementById("taskDetailCard").classList.remove("hidden");
+      await loadTaskDetail();
+    }
+
+    async function loadTaskDetail() {
+      if (!activeTaskId) return;
+      try {
+        const res = await fetch(`/tasks/${activeTaskId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const task = data.task;
+        const steps = data.steps || [];
+        const driftEvents = data.drift_events || [];
+
+        document.getElementById("taskIdLabel").innerText = `Task: ${task.id}`;
+        document.getElementById("taskGoalLabel").innerText = task.goal;
+        
+        const statusColors = {
+          complete: 'bg-emerald-500 text-black',
+          running: 'bg-blue-500 text-white animate-pulse',
+          planning: 'bg-gray-700 text-white',
+          failed: 'bg-rose-600 text-white',
+          paused: 'bg-amber-500 text-black',
+        };
+        const pillEl = document.getElementById("taskStatusPill");
+        pillEl.className = `px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${statusColors[task.status] || 'bg-gray-800 text-gray-300'}`;
+        pillEl.innerText = task.status;
+
+        // Drift Banner
+        const driftBanner = document.getElementById("driftBanner");
+        if (data.has_drift) {
+          driftBanner.classList.remove("hidden");
+          const latestDrift = driftEvents[0] || {};
+          document.getElementById("driftExplanation").innerText = `"${latestDrift.explanation || 'Physical reality mismatch detected on probe verification.'}"`;
+          document.getElementById("driftDetails").innerText = `Step: ${latestDrift.step_id ? latestDrift.step_id.substring(0,8) : '--'} | Tool: ${latestDrift.tool} | Detected: ${latestDrift.reason}`;
+        } else {
+          driftBanner.classList.add("hidden");
+        }
+
+        document.getElementById("timelineStats").innerText = `${steps.length} steps recorded in append-only ledger`;
+
+        // Render Steps Timeline
+        const timeline = document.getElementById("stepsTimeline");
+        timeline.innerHTML = steps.map(s => {
+          const badgeStyles = {
+            verified:   'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+            running:    'bg-blue-500/10 text-blue-400 border-blue-500/30 animate-pulse',
+            pending:    'bg-gray-800/80 text-gray-400 border-gray-700',
+            drifted:    'bg-amber-500/20 text-amber-300 border-amber-500/50',
+            superseded: 'bg-gray-900 text-gray-500 border-gray-800 opacity-60 line-through-title',
+            failed:     'bg-rose-500/20 text-rose-300 border-rose-500/50',
+          };
+          const badgeStyle = badgeStyles[s.status] || 'bg-gray-800 text-gray-300 border-gray-700';
+
+          const modelHandled = s.result && s.result.model_used ? s.result.model_used : (s.status === 'verified' ? 'nvidia/nemotron-3-super-120b-a12b' : 'PLANNER');
+
+          return `
+            <div class="p-4 rounded-xl border bg-gray-900/40 border-gray-800 space-y-2.5">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-mono font-bold text-gray-400 bg-gray-800 px-2 py-0.5 rounded">Seq ${s.seq}</span>
+                  <span class="text-xs font-mono text-gray-500">Idx ${s.idx}</span>
+                  <span class="text-xs font-bold uppercase px-2 py-0.5 rounded-full border ${badgeStyle}">${s.status}</span>
+                  <span class="text-xs font-semibold text-gray-300 font-mono bg-gray-800/60 px-2 py-0.5 rounded">${s.tool}</span>
+                </div>
+                <div class="text-[11px] text-gray-500 font-mono">
+                  Model: <span class="text-gray-300">${modelHandled}</span>
+                </div>
+              </div>
+
+              <div class="text-sm font-semibold text-white">${s.intent}</div>
+
+              <!-- Drift Reason / Superseded / Resolved metadata -->
+              ${s.drift_reason ? `
+                <div class="text-xs bg-amber-950/40 border border-amber-500/30 rounded-lg p-2 text-amber-200 font-mono">
+                  <div class="font-bold text-[10px] text-amber-400 uppercase">Reality Drift:</div>
+                  ${s.drift_reason}
+                  ${s.resolved_by ? `<div class="text-[10px] text-emerald-400 mt-1">✔ Resolved by Step: ${s.resolved_by.substring(0,8)}...</div>` : ''}
+                </div>
+              ` : ''}
+
+              ${s.superseded_by ? `
+                <div class="text-xs bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-400 font-mono">
+                  Superseded By: Step ${s.superseded_by.substring(0,8)}...
+                </div>
+              ` : ''}
+
+              <!-- Probe Info -->
+              <div class="text-[11px] text-gray-400 bg-gray-950/60 rounded-lg p-2.5 font-mono border border-gray-800/80">
+                <div class="text-gray-500 uppercase text-[10px] font-semibold mb-1">Deterministic Reality Probe:</div>
+                ${s.probe ? JSON.stringify(s.probe) : 'Awaiting reality audit...'}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+      } catch (err) {
+        console.error("Failed to load task detail:", err);
+      }
+    }
+
+    async function createTask() {
+      const input = document.getElementById("goalInput");
+      const goal = input.value.trim();
+      if (!goal) return;
+
+      const btn = document.getElementById("createTaskBtn");
+      btn.disabled = true;
+      btn.innerText = "Planning...";
+
+      try {
+        const res = await fetch("/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ goal })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          alert("Error: " + (err.detail || "Failed to create task"));
+          return;
+        }
+        const data = await res.json();
+        input.value = "";
+        await loadTasks();
+        selectTask(data.task.id);
+      } catch (e) {
+        alert("Failed to create task: " + e);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Plan & Create`;
+      }
+    }
+
+    async function runActiveTask() {
+      if (!activeTaskId) return;
+      try {
+        await fetch(`/tasks/${activeTaskId}/run`, { method: "POST" });
+        loadTaskDetail();
+      } catch (e) {
+        alert("Failed to run task: " + e);
+      }
+    }
+
+    async function sabotageActiveTask() {
+      if (!activeTaskId) return;
+      try {
+        const res = await fetch(`/tasks/${activeTaskId}/sabotage`, { method: "POST" });
+        const data = await res.json();
+        alert(`Sabotage injected: Deleted physical file "${data.deleted_file}" directly from disk.\nLedger untouched: true.\nClick "Resume & Reconcile" to detect drift.`);
+        loadTaskDetail();
+      } catch (e) {
+        alert("Sabotage failed: " + e);
+      }
+    }
+
+    async function resumeActiveTask() {
+      if (!activeTaskId) return;
+      try {
+        await fetch(`/tasks/${activeTaskId}/resume`, { method: "POST" });
+        loadTaskDetail();
+      } catch (e) {
+        alert("Failed to resume task: " + e);
+      }
+    }
+
+    function refreshData() {
+      loadTasks();
+      if (activeTaskId) {
+        loadTaskDetail();
+      }
+    }
+
+    // Auto-polling
+    window.addEventListener("DOMContentLoaded", () => {
+      checkHealth();
+      loadTasks();
+      setInterval(() => {
+        if (activeTaskId) {
+          loadTaskDetail();
+        }
+      }, 1000);
+      setInterval(loadTasks, 4000);
+    });
+  </script>
+</body>
+</html>

@@ -7,7 +7,14 @@ from pathlib import Path
 from typing import Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-BASE_WORKSPACE = (PROJECT_ROOT / "workspace").resolve()
+
+
+def get_base_workspace() -> Path:
+    """Return configured base workspace root directory."""
+    env_ws = os.getenv("SAHA_WORKSPACE_ROOT")
+    if env_ws:
+        return Path(env_ws).resolve()
+    return (PROJECT_ROOT / "workspace").resolve()
 
 
 def is_drive_relative(path_str: str) -> bool:
@@ -16,19 +23,20 @@ def is_drive_relative(path_str: str) -> bool:
 
 
 def is_unc_path(path_str: str) -> bool:
-    """Check for UNC network paths like '\\server\share'."""
+    r"""Check for UNC network paths like '\\server\share'."""
     s = str(path_str).strip()
     return s.startswith(r"\\") or s.startswith("//")
 
 
 def get_workspace_dir(task_id: Optional[str] = None) -> Path:
     """Return the absolute path to workspace/<task_id> or workspace/."""
+    base = get_base_workspace()
     if task_id:
         # Sanitize task_id to prevent traversal
         safe_tid = re.sub(r"[^a-zA-Z0-9_\-]", "", str(task_id))
-        ws = (BASE_WORKSPACE / safe_tid).resolve()
+        ws = (base / safe_tid).resolve()
     else:
-        ws = BASE_WORKSPACE
+        ws = base
 
     ws.mkdir(parents=True, exist_ok=True)
     return ws

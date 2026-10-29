@@ -14,6 +14,7 @@ client connection are separate socket calls.
 """
 
 import ipaddress
+import os
 import socket
 from typing import Any, Dict, Optional
 from urllib.parse import urljoin, urlparse
@@ -25,8 +26,12 @@ MAX_REDIRECT_HOPS = 3
 DEFAULT_TIMEOUT = 5.0
 
 
+def is_public_mode() -> bool:
+    return os.getenv("SAHA_PUBLIC_MODE", "false").lower() in ("true", "1", "yes")
+
+
 def validate_target_url(url: str) -> None:
-    """Validate URL scheme, domain, and resolve IP addresses against prohibited network ranges."""
+    """Validate URL scheme, domain, public allowlist, and resolve IP addresses against prohibited network ranges."""
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise PermissionError(f"Forbidden URL scheme '{parsed.scheme}'. Only http and https are permitted.")
@@ -38,6 +43,15 @@ def validate_target_url(url: str) -> None:
     hostname_lower = hostname.lower().strip()
     if hostname_lower == "localhost" or hostname_lower.endswith(".localhost"):
         raise PermissionError(f"SSRF blocked: 'localhost' access is forbidden: {url}")
+
+    if is_public_mode():
+        raw_allowlist = os.getenv("SAHA_HTTP_ALLOWLIST", "example.com,httpbin.org,wikipedia.org")
+        allowed_domains = [d.strip().lower() for d in raw_allowlist.split(",") if d.strip()]
+        matched = any(hostname_lower == d or hostname_lower.endswith("." + d) for d in allowed_domains)
+        if not matched:
+            raise PermissionError(
+                f"Public mode restriction: Domain '{hostname}' is not in the allowlist ({allowed_domains})."
+            )
 
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
 

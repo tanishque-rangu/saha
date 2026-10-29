@@ -49,9 +49,11 @@ class Step:
     status: str  # pending | running | done | verified | drifted | superseded | failed
     drift_reason: Optional[str]
     superseded_by: Optional[str]
-    error: Optional[str]
-    started_at: Optional[str]
-    finished_at: Optional[str]
+    resolved_by: Optional[str] = None
+    depends_on_json: str = "[]"
+    error: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -67,6 +69,10 @@ class Step:
             d["probe"] = json.loads(self.probe_json) if self.probe_json else None
         except Exception:
             d["probe"] = None
+        try:
+            d["depends_on"] = json.loads(self.depends_on_json) if self.depends_on_json else []
+        except Exception:
+            d["depends_on"] = []
         return d
 
 
@@ -168,13 +174,15 @@ class Ledger:
                 args_json = json.dumps(args) if not isinstance(args, str) else args
                 probe = s.get("probe", {})
                 probe_json = json.dumps(probe) if not isinstance(probe, str) else probe
+                depends_on = s.get("depends_on", [])
+                depends_on_json = json.dumps(depends_on) if not isinstance(depends_on, str) else depends_on
 
                 conn.execute(
                     """
-                    INSERT INTO steps (id, task_id, idx, seq, intent, tool, args_json, probe_json, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                    INSERT INTO steps (id, task_id, idx, seq, intent, tool, args_json, probe_json, status, resolved_by, depends_on_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?)
                     """,
-                    (sid, task_id, idx, curr_seq, intent, tool, args_json, probe_json),
+                    (sid, task_id, idx, curr_seq, intent, tool, args_json, probe_json, depends_on_json),
                 )
             conn.execute("UPDATE tasks SET updated_at = ? WHERE id = ?", (now, task_id))
 
@@ -210,6 +218,8 @@ class Ledger:
                     status=r["status"],
                     drift_reason=r["drift_reason"],
                     superseded_by=r["superseded_by"],
+                    resolved_by=r["resolved_by"] if "resolved_by" in r.keys() else None,
+                    depends_on_json=r["depends_on_json"] if "depends_on_json" in r.keys() else "[]",
                     error=r["error"],
                     started_at=r["started_at"],
                     finished_at=r["finished_at"],
@@ -237,6 +247,8 @@ class Ledger:
                 status=r["status"],
                 drift_reason=r["drift_reason"],
                 superseded_by=r["superseded_by"],
+                resolved_by=r["resolved_by"] if "resolved_by" in r.keys() else None,
+                depends_on_json=r["depends_on_json"] if "depends_on_json" in r.keys() else "[]",
                 error=r["error"],
                 started_at=r["started_at"],
                 finished_at=r["finished_at"],
@@ -365,7 +377,7 @@ class Ledger:
         superseded_by_id: Optional[str] = None,
         db_path: Optional[str] = None,
     ) -> None:
-        """Transition steps to 'superseded' without deleting them."""
+        """Transition steps to 'superseded' without deleting them. Drifted steps are never overwritten."""
         if not step_ids:
             return
         init_db(db_path)
@@ -375,10 +387,32 @@ class Ledger:
                     """
                     UPDATE steps
                     SET status = 'superseded', superseded_by = ?
-                    WHERE id = ?
+                    WHERE id = ? AND status != 'drifted'
                     """,
                     (superseded_by_id, sid),
                 )
+
+    @staticmethod
+    def mark_step_resolved(
+        drifted_step_id: str,
+        repair_step_id: str,
+        db_path: Optional[str] = None,
+    ) -> Step:
+        """Link a drifted step to the repair step that resolves it."""
+        init_db(db_path)
+        with get_db(db_path) as conn:
+            conn.execute(
+                """
+                UPDATE steps
+                SET resolved_by = ?
+                WHERE id = ?
+                """,
+                (repair_step_id, drifted_step_id),
+            )
+        step = Ledger.get_step(drifted_step_id, db_path)
+        if not step:
+            raise RuntimeError(f"Step {drifted_step_id} not found")
+        return step
 
     @staticmethod
     def mark_step_failed(
@@ -439,8 +473,29 @@ class Ledger:
             ).fetchall()
             drift_events = [dict(r) for r in rows]
 
-        # Active plan completion check
-        is_complete = len(active_steps) > 0 and all(s.status == "verified" for s in active_steps)
+        # Task complete = every non-superseded step is verified, and every drifted step has a verified resolved_by step
+        steps_by_id = {s.id: s for s in all_steps}
+        non_superseded = [s for s in all_steps if s.status != "superseded"]
+        drifted = [s for s in all_steps if s.status == "drifted"]
+
+        has_incomplete_active = any(
+            s.status in ("pending", "running", "failed") for s in non_superseded
+        )
+        non_superseded_non_drifted_verified = (
+            len(non_superseded) > 0 and
+            all(s.status == "verified" for s in non_superseded if s.status != "drifted")
+        )
+        drifted_resolved = all(
+            s.resolved_by is not None and
+            s.resolved_by in steps_by_id and
+            steps_by_id[s.resolved_by].status == "verified"
+            for s in drifted
+        )
+        is_complete = (
+            not has_incomplete_active and
+            non_superseded_non_drifted_verified and
+            drifted_resolved
+        )
 
         return {
             "task": task.to_dict(),

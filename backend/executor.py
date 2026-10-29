@@ -95,6 +95,7 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
                 "bytes_written": res["bytes_written"],
                 "sha256": res["sha256"],
                 "content_preview": actual_content[:200],
+                "model_used": WORKER_MODEL,
             }
 
         elif step.tool == "read_file":
@@ -107,6 +108,7 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
                 "bytes_read": res["bytes_read"],
                 "sha256": res["sha256"],
                 "content": res["content"],
+                "model_used": WORKER_MODEL,
             }
 
         elif step.tool == "run_shell":
@@ -135,6 +137,7 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
                 "stdout": res["stdout"],
                 "stderr": res["stderr"],
                 "interpretation": interpretation.strip(),
+                "model_used": WORKER_MODEL,
             }
 
         elif step.tool == "http_get":
@@ -162,6 +165,7 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
                 "status_code": res["status_code"],
                 "body_length": res["body_length"],
                 "interpretation": interpretation.strip(),
+                "model_used": WORKER_MODEL,
             }
 
         else:
@@ -215,7 +219,7 @@ def run_task(task_id: str, db_path: Optional[str] = None) -> Task:
         while True:
             # Re-fetch active (non-superseded) steps
             active_steps = Ledger.get_steps(task_id, include_superseded=False, db_path=db_path)
-            pending_steps = [s for s in active_steps if s.status in ("pending", "drifted")]
+            pending_steps = [s for s in active_steps if s.status == "pending"]
             if not pending_steps:
                 break
 

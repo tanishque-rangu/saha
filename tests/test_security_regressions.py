@@ -178,3 +178,32 @@ def test_public_mode_restrictions(monkeypatch):
     with pytest.raises(PermissionError) as exc_info:
         run_shell("echo test")
     assert "disabled in SAHA_PUBLIC_MODE" in str(exc_info.value)
+
+
+def test_public_mode_http_allowlist(monkeypatch):
+    """In SAHA_PUBLIC_MODE=true, domains not in SAHA_HTTP_ALLOWLIST are rejected."""
+    monkeypatch.setenv("SAHA_PUBLIC_MODE", "true")
+    monkeypatch.setenv("SAHA_HTTP_ALLOWLIST", "example.com,httpbin.org")
+
+    # Disallowed domain
+    res = http_get("http://unauthorized-domain.org/test")
+    assert res["status_code"] == -1
+    assert "Public mode restriction" in res["error"]
+
+
+def test_daily_llm_call_cap(monkeypatch):
+    """Exceeding SAHA_DAILY_LLM_CALL_CAP raises 429-style RuntimeError."""
+    from backend.db import check_daily_llm_limit, init_db, record_llm_call
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        test_db = str(Path(tmp_dir) / "test_cap.db")
+        init_db(test_db)
+        monkeypatch.setenv("SAHA_DAILY_LLM_CALL_CAP", "2")
+
+        # Record 2 calls
+        record_llm_call("model-1", 100.0, role="worker", status="success", db_path=test_db)
+        record_llm_call("model-1", 100.0, role="worker", status="success", db_path=test_db)
+
+        # 3rd call should trigger daily cap
+        with pytest.raises(RuntimeError) as exc_info:
+            check_daily_llm_limit(db_path=test_db)
+        assert "429: Rate limit exceeded" in str(exc_info.value)

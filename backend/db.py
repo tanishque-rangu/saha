@@ -78,6 +78,8 @@ CREATE TABLE IF NOT EXISTS steps (
     status TEXT NOT NULL CHECK(status IN ('pending', 'running', 'done', 'verified', 'drifted', 'superseded', 'failed')),
     drift_reason TEXT,
     superseded_by TEXT REFERENCES steps(id),
+    resolved_by TEXT REFERENCES steps(id),
+    depends_on_json TEXT NOT NULL DEFAULT '[]',
     error TEXT,
     started_at TEXT,
     finished_at TEXT
@@ -113,6 +115,7 @@ CREATE INDEX IF NOT EXISTS idx_steps_status ON steps(task_id, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_drift_events_task ON drift_events(task_id);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_model ON llm_calls(model);
+CREATE INDEX IF NOT EXISTS idx_llm_calls_created ON llm_calls(created_at);
 """
 
 
@@ -129,8 +132,36 @@ def init_db(db_path: Optional[str] = None) -> None:
             conn.execute("ALTER TABLE steps ADD COLUMN drift_reason TEXT;")
         if "superseded_by" not in cols:
             conn.execute("ALTER TABLE steps ADD COLUMN superseded_by TEXT REFERENCES steps(id);")
+        if "resolved_by" not in cols:
+            conn.execute("ALTER TABLE steps ADD COLUMN resolved_by TEXT REFERENCES steps(id);")
+        if "depends_on_json" not in cols:
+            conn.execute("ALTER TABLE steps ADD COLUMN depends_on_json TEXT NOT NULL DEFAULT '[]';")
 
         conn.executescript(INDEXES_SQL)
+
+
+def check_daily_llm_limit(db_path: Optional[str] = None) -> None:
+    """Check if daily LLM call cap has been exceeded in the last 24 hours."""
+    cap_str = os.getenv("SAHA_DAILY_LLM_CALL_CAP", "500")
+    try:
+        cap = int(cap_str)
+    except ValueError:
+        cap = 500
+
+    init_db(db_path)
+    with get_db(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) as cnt
+            FROM llm_calls
+            WHERE created_at >= datetime('now', '-24 hours')
+            """
+        ).fetchone()
+        cnt = row["cnt"] if row else 0
+        if cnt >= cap:
+            raise RuntimeError(
+                f"Daily LLM call cap of {cap} calls exceeded (429: Rate limit exceeded). Current usage: {cnt}"
+            )
 
 
 def record_llm_call(

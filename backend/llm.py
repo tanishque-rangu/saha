@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional, Union
 from dotenv import load_dotenv
 from openai import APIConnectionError, APIError, APITimeoutError, NotFoundError, OpenAI, RateLimitError
 
-from backend.db import record_llm_call
+from backend.db import check_daily_llm_limit, record_llm_call
 
 # Safely inject truststore if available to verify SSL against Windows root certificates
 try:
@@ -131,8 +131,9 @@ def call_llm(
     Records model, latency, and token usage into the llm_calls table.
     Enforces strict fail-loud error reporting if a model ID is not found.
     """
-    client = get_client()
     effective_role = role or get_model_role(model)
+    check_daily_llm_limit(db_path=db_path)
+    client = get_client()
     tokens_to_request = max_tokens or get_default_max_tokens(effective_role)
     request_timeout = timeout or DEFAULT_TIMEOUT
 
