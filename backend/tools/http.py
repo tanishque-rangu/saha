@@ -16,7 +16,7 @@ client connection are separate socket calls.
 import ipaddress
 import os
 import socket
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -30,7 +30,7 @@ def is_public_mode() -> bool:
     return os.getenv("SAHA_PUBLIC_MODE", "false").lower() in ("true", "1", "yes")
 
 
-def validate_target_url(url: str) -> None:
+def validate_target_url(url: str, allowed_domains: Optional[List[str]] = None) -> None:
     """Validate URL scheme, domain, public allowlist, and resolve IP addresses against prohibited network ranges."""
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
@@ -45,12 +45,15 @@ def validate_target_url(url: str) -> None:
         raise PermissionError(f"SSRF blocked: 'localhost' access is forbidden: {url}")
 
     if is_public_mode():
-        raw_allowlist = os.getenv("SAHA_HTTP_ALLOWLIST", "example.com,httpbin.org,wikipedia.org")
-        allowed_domains = [d.strip().lower() for d in raw_allowlist.split(",") if d.strip()]
-        matched = any(hostname_lower == d or hostname_lower.endswith("." + d) for d in allowed_domains)
+        if allowed_domains is None:
+            raw_allowlist = os.getenv("SAHA_HTTP_ALLOWLIST", "example.com,httpbin.org,wikipedia.org")
+            domains_to_check = [d.strip().lower() for d in raw_allowlist.split(",") if d.strip()]
+        else:
+            domains_to_check = [d.strip().lower() for d in allowed_domains if d.strip()]
+        matched = any(hostname_lower == d or hostname_lower.endswith("." + d) for d in domains_to_check)
         if not matched:
             raise PermissionError(
-                f"Public mode restriction: Domain '{hostname}' is not in the allowlist ({allowed_domains})."
+                f"Public mode restriction: Domain '{hostname}' is not in the allowlist ({domains_to_check})."
             )
 
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
@@ -85,6 +88,7 @@ def http_get(
     url: str,
     timeout: float = DEFAULT_TIMEOUT,
     headers: Optional[Dict[str, str]] = None,
+    allowed_domains: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Execute an HTTP GET request with SSRF validation, manual redirect audit, and 1 MB cap."""
     current_url = url
@@ -93,7 +97,7 @@ def http_get(
     try:
         with httpx.Client(timeout=timeout, follow_redirects=False) as client:
             while hops <= MAX_REDIRECT_HOPS:
-                validate_target_url(current_url)
+                validate_target_url(current_url, allowed_domains=allowed_domains)
 
                 # Stream response to cap size at 1 MB
                 with client.stream("GET", current_url, headers=headers) as resp:

@@ -50,10 +50,98 @@ jobs:
           push: false
           tags: saha:latest
 
+  docker-smoke-test:
+    name: Container Smoke & Privilege Drop Test
+    runs-on: ubuntu-latest
+    needs: docker-build
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Syntax check entrypoint script
+        run: |
+          sh -n docker-entrypoint.sh
+
+      - name: Build local container image
+        run: |
+          docker build -t saha:smoke-test .
+
+      - name: Create root-owned test directory with mode 755
+        run: |
+          sudo mkdir -p /tmp/saha-root-data
+          sudo chown 0:0 /tmp/saha-root-data
+          sudo chmod 755 /tmp/saha-root-data
+          ls -ld /tmp/saha-root-data
+
+      - name: Run container with root-owned volume mount
+        run: |
+          docker run -d \
+            --name saha-smoke \
+            -p 8080:8080 \
+            -v /tmp/saha-root-data:/data \
+            -e SAHA_PUBLIC_MODE=true \
+            -e SAHA_REQUIRE_PERSISTENT=true \
+            -e NEBIUS_API_KEY=dummy \
+            saha:smoke-test
+
+      - name: Wait up to 60s for GET /health and verify assertions
+        run: |
+          echo "Waiting for container /health to become ready..."
+          READY=0
+          for i in $(seq 1 60); do
+            if curl -s -f http://localhost:8080/health > /tmp/health.json; then
+              READY=1
+              echo "Health check succeeded after $i seconds."
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$READY" -ne 1 ]; then
+            echo "ERROR: Timed out waiting for /health after 60s"
+            docker logs saha-smoke
+            exit 1
+          fi
+
+          echo "GET /health response:"
+          cat /tmp/health.json
+          echo ""
+
+          # Assert data_persistent=true
+          grep '"data_persistent":true' /tmp/health.json || grep '"data_persistent": true' /tmp/health.json || {
+            echo "ERROR: Assertion failed - data_persistent=true not found in /health response"
+            exit 1
+          }
+
+          # Assert GET /tasks without X-Saha-Owner returns 401
+          HTTP_STATUS=$(curl -s -o /tmp/tasks.json -w "%{http_code}" http://localhost:8080/tasks)
+          echo "GET /tasks response HTTP status (without header): $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -ne 401 ]; then
+            echo "ERROR: Assertion failed - expected HTTP 401 from GET /tasks without header, got $HTTP_STATUS"
+            cat /tmp/tasks.json
+            exit 1
+          fi
+
+          # Assert process uid inside container is 10001
+          CONTAINER_UID=$(docker exec saha-smoke id -u)
+          echo "Container process UID: $CONTAINER_UID"
+          if [ "$CONTAINER_UID" -ne 10001 ]; then
+            echo "ERROR: Assertion failed - expected container process UID 10001, got $CONTAINER_UID"
+            exit 1
+          fi
+
+      - name: Stop and cleanup container
+        if: always()
+        run: |
+          docker logs saha-smoke || true
+          docker rm -f saha-smoke || true
+          sudo rm -rf /tmp/saha-root-data || true
+
   publish:
     name: Publish Container to GHCR
     runs-on: ubuntu-latest
-    needs: [test, docker-build]
+    needs: [test, docker-build, docker-smoke-test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       packages: write

@@ -18,8 +18,9 @@ from typing import Any, Dict, Optional
 from backend.db import get_db, get_task_owner_id
 from backend.ledger import Ledger, Step, Task
 from backend.llm import WORKER_MODEL, call_llm
-from backend.policy import create_approval, evaluate_step_policy, get_owner_policy
+from backend.policy import PUBLIC_ALLOWED_TOOLS, create_approval, evaluate_step_policy, get_owner_policy
 from backend.tools import http_get, read_file, run_shell, write_file
+from backend.tools.files import list_files
 from backend.verifiers import verify_step
 
 MAX_CONCURRENT_TASKS = 2
@@ -61,6 +62,11 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
         probe_spec = json.loads(step.probe_json) if step.probe_json else {}
     except Exception:
         probe_spec = {}
+
+    # Hard public mode restriction: tool must be in PUBLIC_ALLOWED_TOOLS
+    if is_public_mode() and step.tool not in PUBLIC_ALLOWED_TOOLS:
+        err_msg = f"Tool '{step.tool}' is strictly forbidden in public mode. Allowed tools: {sorted(PUBLIC_ALLOWED_TOOLS)}."
+        return Ledger.mark_step_failed(step.id, error=err_msg, db_path=db_path)
 
     # Policy Check BEFORE running or tool execution
     policy = get_owner_policy(owner_id, db_path=db_path)
@@ -140,6 +146,8 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
             }
 
         elif step.tool == "run_shell":
+            if is_public_mode():
+                raise RuntimeError("Tool 'run_shell' is strictly forbidden in public mode.")
             cmd = args.get("cmd")
             if not cmd:
                 raise ValueError("run_shell requires 'cmd' argument")
@@ -174,7 +182,7 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
             url = args.get("url")
             if not url:
                 raise ValueError("http_get requires 'url' argument")
-            res = http_get(url)
+            res = http_get(url, allowed_domains=policy.allowed_domains)
             if res.get("status_code") != 200:
                 raise RuntimeError(f"HTTP request failed with status {res.get('status_code')}: {res.get('error')}")
 
@@ -198,6 +206,15 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
                 "body_length": res["body_length"],
                 "interpretation": interpretation.strip(),
                 "model_used": WORKER_MODEL,
+            }
+
+        elif step.tool == "list_files":
+            path = args.get("path", ".")
+            files = list_files(path, task_id=task_id)
+            result = {
+                "path": path,
+                "files": files,
+                "count": len(files),
             }
 
         else:

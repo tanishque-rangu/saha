@@ -21,9 +21,18 @@ from pydantic import BaseModel, Field
 from backend.db import get_db, init_db, utc_now_iso
 
 
+PUBLIC_ALLOWED_TOOLS = frozenset({"write_file", "read_file", "http_get", "list_files"})
+
+
+def is_public_mode() -> bool:
+    return os.getenv("SAHA_PUBLIC_MODE", "false").lower() in ("true", "1", "yes")
+
+
 class Policy(BaseModel):
     allowed_tools: List[str] = Field(
-        default_factory=lambda: ["write_file", "read_file", "http_get"],
+        default_factory=lambda: ["write_file", "read_file", "http_get", "list_files"]
+        if is_public_mode()
+        else ["write_file", "read_file", "run_shell", "http_get", "list_files"],
         description="List of permitted tool names for execution.",
     )
     allowed_domains: List[str] = Field(
@@ -39,14 +48,28 @@ class Policy(BaseModel):
         description="Whether autonomous drift repair is permitted.",
     )
     max_steps: int = Field(
-        default=10,
+        default=5 if is_public_mode() else 10,
         description="Maximum number of steps permitted in a single task DAG.",
     )
 
 
 def get_default_policy() -> Policy:
     """Return default policy with sensible public-mode defaults."""
-    return Policy()
+    if is_public_mode():
+        return Policy(
+            allowed_tools=["write_file", "read_file", "http_get", "list_files"],
+            allowed_domains=["example.com", "wikipedia.org", "httpbin.org"],
+            allowed_paths=["*"],
+            auto_heal=True,
+            max_steps=5,
+        )
+    return Policy(
+        allowed_tools=["write_file", "read_file", "run_shell", "http_get", "list_files"],
+        allowed_domains=["example.com", "wikipedia.org", "httpbin.org"],
+        allowed_paths=["*"],
+        auto_heal=True,
+        max_steps=10,
+    )
 
 
 def get_owner_policy(owner_id: str, db_path: Optional[str] = None) -> Policy:
@@ -74,6 +97,12 @@ def get_owner_policy(owner_id: str, db_path: Optional[str] = None) -> Policy:
 
 def set_owner_policy(owner_id: str, policy: Policy, db_path: Optional[str] = None) -> Policy:
     """Save or update an owner's policy in SQLite."""
+    if is_public_mode():
+        unpermitted = [t for t in policy.allowed_tools if t not in PUBLIC_ALLOWED_TOOLS]
+        if unpermitted:
+            raise ValueError(
+                f"In public mode, tools outside {sorted(PUBLIC_ALLOWED_TOOLS)} cannot be permitted: {unpermitted}"
+            )
     init_db(db_path)
     with get_db(db_path) as conn:
         conn.execute(
@@ -97,6 +126,10 @@ def evaluate_step_policy(
     Returns (True, None) if allowed, or (False, reason) if blocked.
     Deterministic code enforcement only.
     """
+    # 0. Public mode hard limit: only PUBLIC_ALLOWED_TOOLS reachable
+    if is_public_mode() and tool not in PUBLIC_ALLOWED_TOOLS:
+        return False, f"Tool '{tool}' is strictly forbidden in public mode. Allowed tools: {sorted(PUBLIC_ALLOWED_TOOLS)}."
+
     # 1. Step count check
     if current_step_index > policy.max_steps:
         return False, f"Step count ({current_step_index}) exceeds policy max_steps ({policy.max_steps})."
@@ -214,6 +247,8 @@ def approve_request(
 
         step_id = row["step_id"]
         tool = row["tool"]
+        if is_public_mode() and tool not in PUBLIC_ALLOWED_TOOLS:
+            raise ValueError(f"Cannot approve tool '{tool}': strictly forbidden in public mode.")
         args = json.loads(row["args_json"]) if row["args_json"] else {}
 
         # 1. Update approval status

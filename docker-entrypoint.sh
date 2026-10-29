@@ -12,13 +12,15 @@ if [ "$(id -u)" = "0" ]; then
     mkdir -p "$DATA_DIR" "$DATA_DIR/workspace"
     chown -R "$APP_UID:$APP_GID" "$DATA_DIR"
     chmod 700 "$DATA_DIR"
+    echo "[docker-entrypoint] Data directory $DATA_DIR initialized. Dropping privileges to $APP_USER (target UID $APP_UID)..."
     if command -v gosu >/dev/null 2>&1; then
-        exec gosu "$APP_USER" "$@"
+        exec gosu "$APP_USER" sh -c 'echo "[docker-entrypoint] Dropped privileges; running as UID $(id -u)"; exec "$@"' dummy "$@"
     else
-        exec su -s /bin/sh "$APP_USER" -c 'exec "$@"' -- "$@"
+        exec su -s /bin/sh "$APP_USER" -c 'echo "[docker-entrypoint] Dropped privileges; running as UID $(id -u)"; exec "$@"' dummy "$@"
     fi
 else
     # Running as non-root user (e.g. UID 10001)
+    echo "[docker-entrypoint] Running as current user (UID $(id -u))"
     if [ ! -w "$DATA_DIR" ] 2>/dev/null; then
         if [ "$SAHA_REQUIRE_PERSISTENT" = "true" ] || [ "$SAHA_REQUIRE_PERSISTENT" = "1" ]; then
             echo "ERROR: Data directory '$DATA_DIR' is not writable by current user (UID $(id -u))." >&2

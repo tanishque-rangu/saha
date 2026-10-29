@@ -1,18 +1,22 @@
 services:
   - type: web
     name: saha
-    env: docker
+    runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: standard
-    region: oregon
+    plan: starter
+    region: singapore
     healthCheckPath: /health
     envVars:
       - key: SAHA_PUBLIC_MODE
         value: "true"
       - key: SAHA_DEMO_MODE
-        value: "false"
+        value: "true"
       - key: SAHA_REQUIRE_PERSISTENT
         value: "true"
+      - key: SAHA_DB_PATH
+        value: /data/saha.db
+      - key: SAHA_WORKSPACE_ROOT
+        value: /data/workspace
       - key: NEBIUS_API_KEY
         sync: false
     disk:

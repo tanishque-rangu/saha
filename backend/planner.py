@@ -11,8 +11,9 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.llm import PLANNER_MODEL, call_llm_json
+from backend.policy import PUBLIC_ALLOWED_TOOLS
 
-ToolType = Literal["write_file", "read_file", "run_shell", "http_get"]
+ToolType = Literal["write_file", "read_file", "run_shell", "http_get", "list_files"]
 MAX_PUBLIC_STEPS = 8
 
 
@@ -40,14 +41,16 @@ def get_planner_system_prompt() -> str:
 1. write_file: {"path": str, "content_brief": str} (Brief describing what the file should contain; WORKER will generate the actual content)
 2. read_file: {"path": str}
 3. http_get: {"url": str}
+4. list_files: {"path": str}
 
-NOTE: You are running in SAHA_PUBLIC_MODE. 'run_shell' is strictly DISABLED and forbidden."""
+NOTE: You are running in SAHA_PUBLIC_MODE. 'run_shell' and any tools outside {write_file, read_file, http_get, list_files} are strictly DISABLED and forbidden."""
     else:
         tools_desc = """Available sandboxed tools (executed in workspace/<task_id>/):
 1. write_file: {"path": str, "content_brief": str} (Brief describing what the file should contain; WORKER will generate the actual content)
 2. read_file: {"path": str}
 3. run_shell: {"cmd": str} (Allowed commands: ls, cat, head, tail, grep, echo, python <script.py>)
-4. http_get: {"url": str}"""
+4. http_get: {"url": str}
+5. list_files: {"path": str}"""
 
     return f"""You are Saha's Master Planner, powered by NVIDIA Nemotron.
 Your job is to break down a user's goal into an ordered sequence of executable, deterministic steps.
@@ -120,9 +123,9 @@ def generate_plan(goal: str, context: Optional[str] = None, owner_id: Optional[s
             # Ensure 1-indexed sequential ordering
             for i, step in enumerate(plan.steps, start=1):
                 step.idx = i
-                # Public mode validation: reject run_shell
-                if is_public_mode() and step.tool == "run_shell":
-                    raise PermissionError("run_shell is forbidden in SAHA_PUBLIC_MODE")
+                # Public mode validation: reject tools outside PUBLIC_ALLOWED_TOOLS
+                if is_public_mode() and step.tool not in PUBLIC_ALLOWED_TOOLS:
+                    raise PermissionError(f"Tool '{step.tool}' is forbidden in SAHA_PUBLIC_MODE. Allowed: {sorted(PUBLIC_ALLOWED_TOOLS)}")
 
             return plan.steps
 
@@ -172,10 +175,16 @@ CRITICAL RULES FOR DRIFT REPAIR:
         role="planner",
         temperature=0.0,
         owner_id=owner_id,
-        context_tags=["role:planner", f"task_id:{task.id}"],
+        context_tags=["role:planner"],
     )
     if isinstance(raw_dict, list):
         raw_dict = {"steps": raw_dict}
 
     plan = TaskPlan.model_validate(raw_dict)
+    if is_public_mode():
+        for s in plan.steps:
+            if s.tool not in PUBLIC_ALLOWED_TOOLS:
+                raise PermissionError(
+                    f"Tool '{s.tool}' is forbidden in SAHA_PUBLIC_MODE. Allowed: {sorted(PUBLIC_ALLOWED_TOOLS)}"
+                )
     return plan.steps

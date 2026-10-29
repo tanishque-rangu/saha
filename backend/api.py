@@ -23,6 +23,7 @@ from backend.db import (
     check_and_init_data_dirs,
     delete_owner_space,
     get_data_dir_status,
+    get_db,
     get_db_path,
     get_llm_metrics,
     get_owner_egress_logs,
@@ -32,6 +33,7 @@ from backend.executor import is_public_mode, run_task
 from backend.ledger import Ledger
 from backend.planner import generate_plan
 from backend.policy import (
+    PUBLIC_ALLOWED_TOOLS,
     Policy,
     approve_request,
     create_approval,
@@ -190,15 +192,17 @@ class ApproveActionRequest(BaseModel):
 @app.get("/health")
 def health() -> Dict[str, Any]:
     data_status = get_data_dir_status()
-    return {
+    resp = {
         "status": "ok",
         "service": "Saha",
         "public_mode": is_public_mode(),
         "demo_mode": is_demo_mode(),
         "data_dir_ok": data_status["data_dir_ok"],
         "data_persistent": data_status["data_persistent"],
-        "data_dir": data_status["effective_data_dir"],
     }
+    if not is_public_mode():
+        resp["data_dir"] = data_status["effective_data_dir"]
+    return resp
 
 
 @app.get("/metrics")
@@ -260,7 +264,17 @@ def get_policy(request: Request) -> Dict[str, Any]:
 def update_policy(policy_data: Policy, request: Request) -> Dict[str, Any]:
     """Update the owner's execution policy."""
     _, owner_id = get_owner_info(request)
-    saved = set_owner_policy(owner_id, policy_data)
+    if is_public_mode():
+        unpermitted = [t for t in policy_data.allowed_tools if t not in PUBLIC_ALLOWED_TOOLS]
+        if unpermitted:
+            raise HTTPException(
+                status_code=400,
+                detail=f"In public mode, tools outside {sorted(PUBLIC_ALLOWED_TOOLS)} cannot be permitted: {unpermitted}",
+            )
+    try:
+        saved = set_owner_policy(owner_id, policy_data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"status": "updated", "owner_id": owner_id, "policy": saved.model_dump()}
 
 
@@ -277,9 +291,20 @@ def approve_step(approval_id: str, request: Request, body: Optional[ApproveActio
     """Approve a blocked step, re-queue to pending, resume execution in background, and optionally update policy."""
     _, owner_id = get_owner_info(request)
     always_allow = body.always_allow if body else False
+    if is_public_mode():
+        with get_db() as conn:
+            row = conn.execute("SELECT tool FROM approvals WHERE id = ? AND owner_id = ?", (approval_id, owner_id)).fetchone()
+            if row and row["tool"] not in PUBLIC_ALLOWED_TOOLS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot approve tool '{row['tool']}': tool is strictly forbidden in public mode.",
+                )
     try:
         res = approve_request(approval_id, owner_id=owner_id, always_allow=always_allow)
-    except ValueError:
+    except ValueError as e:
+        err_msg = str(e)
+        if "forbidden" in err_msg.lower() or "cannot be approved" in err_msg.lower():
+            raise HTTPException(status_code=400, detail=err_msg)
         raise HTTPException(status_code=404, detail="Approval not found")
 
     task_id = res.get("task_id")

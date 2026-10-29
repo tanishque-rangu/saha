@@ -36,8 +36,6 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # Ensure app directory permissions
 RUN chown -R appuser:appgroup /app
 
-USER appuser
-
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

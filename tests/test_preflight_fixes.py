@@ -28,9 +28,10 @@ from backend.db import (
     init_db,
     record_llm_call,
 )
-from backend.executor import run_task
+from backend.executor import execute_step, run_task
 from backend.ledger import Ledger
 from backend.llm import call_llm, filter_context_tags
+from backend.planner import generate_plan, get_planner_system_prompt
 from backend.policy import approve_request, create_approval, deny_request, get_owner_policy, set_owner_policy, Policy
 from backend.tools.files import list_files, read_file, write_file
 from backend.tools.sandbox import get_workspace_dir, resolve_workspace_path
@@ -419,3 +420,145 @@ def test_symlink_escape_rejection(test_env):
         # run_shell python script inside symlinked directory must reject
         with pytest.raises(PermissionError):
             run_shell("python symlink_dir/secret_script.py", task_id=tid)
+
+
+# =========================================================================
+# 7. PUBLIC MODE HARD LIMITS & HEALTH PRIVACY TESTS
+# =========================================================================
+
+def test_public_mode_health_returns_only_booleans_and_status(monkeypatch, test_env):
+    """GET /health in public mode returns only booleans and status fields (no paths, versions, or host info)."""
+    monkeypatch.setenv("SAHA_PUBLIC_MODE", "true")
+    client = TestClient(app)
+    res = client.get("/health")
+    assert res.status_code == 200
+    data = res.json()
+
+    # Assert only booleans and status fields
+    assert set(data.keys()) == {"status", "service", "public_mode", "demo_mode", "data_dir_ok", "data_persistent"}
+    assert data["status"] == "ok"
+    assert data["service"] == "Saha"
+    assert data["public_mode"] is True
+    assert isinstance(data["demo_mode"], bool)
+    assert isinstance(data["data_dir_ok"], bool)
+    assert isinstance(data["data_persistent"], bool)
+
+    # Assert no paths, hostnames, or dependency versions
+    assert "data_dir" not in data
+    for k, v in data.items():
+        if isinstance(v, str):
+            assert "/" not in v and "\\" not in v
+
+
+def test_public_mode_new_owner_policy_defaults(monkeypatch, test_env):
+    """A new owner in public mode receives policy defaults with only {write_file, read_file, http_get, list_files}."""
+    monkeypatch.setenv("SAHA_PUBLIC_MODE", "true")
+    client = TestClient(app)
+    token = "owner_token_new_defaults_32_characters"
+    headers = {"X-Saha-Owner": token}
+
+    res = client.get("/policy", headers=headers)
+    assert res.status_code == 200
+    policy = res.json()["policy"]
+
+    # Verify policy defaults
+    assert set(policy["allowed_tools"]) == {"write_file", "read_file", "http_get", "list_files"}
+    assert "run_shell" not in policy["allowed_tools"]
+    assert policy["max_steps"] == 5
+    assert policy["auto_heal"] is True
+    assert set(policy["allowed_domains"]) == {"example.com", "wikipedia.org", "httpbin.org"}
+
+
+def test_public_mode_put_policy_rejects_unpermitted_tools(monkeypatch, test_env):
+    """PUT /policy cannot add run_shell or any tool outside allowed set in public mode (rejects with 400)."""
+    monkeypatch.setenv("SAHA_PUBLIC_MODE", "true")
+    client = TestClient(app)
+    token = "owner_token_put_policy_32_characters_123"
+    headers = {"X-Saha-Owner": token}
+
+    # 1. Attempt to add run_shell
+    payload = {
+        "allowed_tools": ["write_file", "read_file", "run_shell"],
+        "allowed_domains": ["example.com"],
+        "allowed_paths": ["*"],
+        "auto_heal": True,
+        "max_steps": 5,
+    }
+    res = client.put("/policy", headers=headers, json=payload)
+    assert res.status_code == 400
+    assert "run_shell" in res.json()["detail"]
+
+    # 2. Attempt to add unknown/arbitrary tool
+    payload["allowed_tools"] = ["write_file", "read_file", "custom_eval_tool"]
+    res2 = client.put("/policy", headers=headers, json=payload)
+    assert res2.status_code == 400
+    assert "custom_eval_tool" in res2.json()["detail"]
+
+
+def test_public_mode_approval_rejects_run_shell(monkeypatch, test_env):
+    """Approvals for run_shell cannot be approved in public mode (rejects with 400)."""
+    monkeypatch.setenv("SAHA_PUBLIC_MODE", "true")
+    client = TestClient(app)
+    token = "owner_token_appr_reject_32_chars_long_12"
+    headers = {"X-Saha-Owner": token}
+    oid = hash_owner_token(token)
+    db_path = test_env["db"]
+
+    task = Ledger.create_task("Public RunShell Approval Task", owner_id=oid, db_path=db_path)
+    step = Ledger.add_steps(
+        task.id,
+        [{"intent": "Shell step", "tool": "run_shell", "args": {"cmd": "ls"}, "probe": {}, "depends_on": []}],
+        db_path=db_path,
+    )[0]
+    appr_id = create_approval(oid, task.id, step.id, "run_shell", {"cmd": "ls"}, "Run shell blocked", db_path=db_path)
+
+    res = client.post(f"/approvals/{appr_id}/approve", headers=headers)
+    assert res.status_code == 400
+    assert "run_shell" in res.json()["detail"]
+    assert "strictly forbidden" in res.json()["detail"].lower()
+
+
+def test_public_mode_executor_refuses_run_shell(monkeypatch, test_env):
+    """Executor marks step failed immediately if tool is run_shell in public mode."""
+    monkeypatch.setenv("SAHA_PUBLIC_MODE", "true")
+    oid = "test_owner_public_executor"
+    db_path = test_env["db"]
+
+    task = Ledger.create_task("Shell Execution Task", owner_id=oid, db_path=db_path)
+    step = Ledger.add_steps(
+        task.id,
+        [{"intent": "Execute shell", "tool": "run_shell", "args": {"cmd": "echo hello"}, "probe": {}, "depends_on": []}],
+        db_path=db_path,
+    )[0]
+
+    res_step = execute_step(step.id, db_path=db_path)
+    assert res_step.status == "failed"
+    assert "strictly forbidden in public mode" in res_step.error
+
+
+def test_public_mode_planner_excludes_run_shell(monkeypatch):
+    """Planner prompt strictly excludes run_shell, and generate_plan rejects plans with unpermitted tools in public mode."""
+    monkeypatch.setenv("SAHA_PUBLIC_MODE", "true")
+    prompt = get_planner_system_prompt()
+    assert "run_shell" in prompt
+    assert "'run_shell' and any tools outside" in prompt
+    assert "strictly DISABLED and forbidden" in prompt
+
+    # Mock call_llm_json to return run_shell step in public mode
+    mock_plan = {
+        "steps": [
+            {
+                "idx": 1,
+                "intent": "Try running shell",
+                "tool": "run_shell",
+                "args": {"cmd": "echo test"},
+                "probe": {},
+                "depends_on": [],
+            }
+        ]
+    }
+    with patch("backend.planner.call_llm_json", return_value=mock_plan):
+        with pytest.raises(ValueError) as exc:
+            generate_plan("Test run_shell rejection")
+        assert "forbidden" in str(exc.value)
+

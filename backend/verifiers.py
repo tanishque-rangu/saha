@@ -220,6 +220,32 @@ def verify_http_get(
     }
 
 
+def verify_list_files(
+    args: Dict[str, Any],
+    result: Optional[Dict[str, Any]] = None,
+    probe_spec: Optional[Dict[str, Any]] = None,
+    task_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Verify list_files: checks that path exists and was listed."""
+    path = args.get("path", ".")
+    try:
+        target = resolve_workspace_path(path, task_id=task_id)
+    except Exception as e:
+        return {"passed": False, "error": f"Invalid path resolution: {e}", "details": {"path": path}}
+
+    if not target.exists():
+        return {
+            "passed": False,
+            "error": f"Target path does not exist: {path}",
+            "details": {"path": path},
+        }
+
+    return {
+        "passed": True,
+        "details": {"path": path, "count": result.get("count", 0) if result else 0},
+    }
+
+
 def verify_step(
     tool: str,
     args: Dict[str, Any],
@@ -233,6 +259,7 @@ def verify_step(
         "read_file": lambda: verify_read_file(args, result, probe_spec, task_id=task_id),
         "run_shell": lambda: verify_run_shell(args, result, probe_spec, task_id=task_id),
         "http_get": lambda: verify_http_get(args, result, probe_spec, task_id=task_id),
+        "list_files": lambda: verify_list_files(args, result, probe_spec, task_id=task_id),
     }
 
     verifier = dispatch.get(tool)
