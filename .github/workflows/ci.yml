@@ -123,13 +123,31 @@ jobs:
             exit 1
           fi
 
-          # Assert process uid inside container is 10001
-          CONTAINER_UID=$(docker exec saha-smoke id -u)
-          echo "Container process UID: $CONTAINER_UID"
-          if [ "$CONTAINER_UID" -ne 10001 ]; then
-            echo "ERROR: Assertion failed - expected container process UID 10001, got $CONTAINER_UID"
+          # Assert process uid of uvicorn inside container is 10001 via /proc inspection
+          UVICORN_UID=$(docker exec saha-smoke sh -c '
+            FOUND_UID=""
+            for pid_dir in /proc/[0-9]*; do
+              if [ -f "$pid_dir/cmdline" ] && grep -q "uvicorn" "$pid_dir/cmdline" 2>/dev/null; then
+                FOUND_UID=$(awk "/^Uid:/ {print \$2}" "$pid_dir/status")
+                break
+              fi
+            done
+            echo "$FOUND_UID"
+          ')
+          echo "Uvicorn process UID inside container (from /proc): $UVICORN_UID"
+          if [ "$UVICORN_UID" -ne 10001 ]; then
+            echo "ERROR: Assertion failed - expected uvicorn process UID 10001, got '$UVICORN_UID'"
+            docker exec saha-smoke ps aux || true
             exit 1
           fi
+
+          # Assert docker logs contains entrypoint privilege drop log
+          echo "Checking container logs for privilege drop log line..."
+          docker logs saha-smoke | grep "running as UID 10001" || {
+            echo "ERROR: Assertion failed - entrypoint line 'running as UID 10001' not found in docker logs"
+            docker logs saha-smoke
+            exit 1
+          }
 
       - name: Stop and cleanup container
         if: always()

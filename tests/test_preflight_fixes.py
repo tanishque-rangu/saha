@@ -33,6 +33,7 @@ from backend.ledger import Ledger
 from backend.llm import call_llm, filter_context_tags
 from backend.planner import generate_plan, get_planner_system_prompt
 from backend.policy import approve_request, create_approval, deny_request, get_owner_policy, set_owner_policy, Policy
+from backend.resume import resume_task
 from backend.tools.files import list_files, read_file, write_file
 from backend.tools.sandbox import get_workspace_dir, resolve_workspace_path
 from backend.tools.shell import run_shell
@@ -464,7 +465,7 @@ def test_public_mode_new_owner_policy_defaults(monkeypatch, test_env):
     # Verify policy defaults
     assert set(policy["allowed_tools"]) == {"write_file", "read_file", "http_get", "list_files"}
     assert "run_shell" not in policy["allowed_tools"]
-    assert policy["max_steps"] == 5
+    assert policy["max_steps"] == 8
     assert policy["auto_heal"] is True
     assert set(policy["allowed_domains"]) == {"example.com", "wikipedia.org", "httpbin.org"}
 
@@ -482,7 +483,7 @@ def test_public_mode_put_policy_rejects_unpermitted_tools(monkeypatch, test_env)
         "allowed_domains": ["example.com"],
         "allowed_paths": ["*"],
         "auto_heal": True,
-        "max_steps": 5,
+        "max_steps": 8,
     }
     res = client.put("/policy", headers=headers, json=payload)
     assert res.status_code == 400
@@ -561,4 +562,164 @@ def test_public_mode_planner_excludes_run_shell(monkeypatch):
         with pytest.raises(ValueError) as exc:
             generate_plan("Test run_shell rejection")
         assert "forbidden" in str(exc.value)
+
+
+def test_step_blocked_then_approved_clears_block_reason_and_drift_reason_null(monkeypatch, test_env):
+    """A step blocked by policy has block_reason set and drift_reason is null.
+    Once approved, block_reason is cleared (null) and drift_reason is null.
+    If denied, block_reason is kept intact."""
+    monkeypatch.setenv("SAHA_PUBLIC_MODE", "true")
+    client = TestClient(app)
+    token = "owner_token_block_reason_test_32_chars_1"
+    headers = {"X-Saha-Owner": token}
+    oid = hash_owner_token(token)
+    db_path = test_env["db"]
+
+    # 1. Create a task with an unallowed domain step (http_get to python.org)
+    task = Ledger.create_task("Block Reason Task", owner_id=oid, db_path=db_path)
+    step = Ledger.add_steps(
+        task.id,
+        [{
+            "intent": "Check python.org",
+            "tool": "http_get",
+            "args": {"url": "https://www.python.org"},
+            "probe": {"expected_status": 200},
+            "depends_on": [],
+        }],
+        db_path=db_path,
+    )[0]
+
+    # Execute step -> policy blocks it
+    blocked_step = execute_step(step.id, db_path=db_path)
+    assert blocked_step.status == "blocked"
+    assert blocked_step.block_reason is not None
+    assert "not in policy allowed_domains" in blocked_step.block_reason
+    assert blocked_step.drift_reason is None
+
+    # Verify database directly
+    row_blocked = Ledger.get_step(step.id, db_path=db_path)
+    assert row_blocked.status == "blocked"
+    assert row_blocked.block_reason is not None
+    assert row_blocked.drift_reason is None
+
+    # 2. Approve the step
+    apprs = client.get("/approvals?status=pending", headers=headers).json()["approvals"]
+    assert len(apprs) == 1
+    appr_id = apprs[0]["id"]
+
+    with patch("backend.api.run_task"):
+        res_appr = client.post(f"/approvals/{appr_id}/approve", headers=headers, json={"always_allow": True})
+        assert res_appr.status_code == 200
+
+    # Step must now be pending with block_reason is None and drift_reason is None
+    row_approved = Ledger.get_step(step.id, db_path=db_path)
+    assert row_approved.status == "pending"
+    assert row_approved.block_reason is None
+    assert row_approved.drift_reason is None
+
+    # 3. Test Deny keeps block_reason
+    step2 = Ledger.add_steps(
+        task.id,
+        [{
+            "intent": "Check other unallowed",
+            "tool": "http_get",
+            "args": {"url": "https://www.ruby-lang.org"},
+            "probe": {"expected_status": 200},
+            "depends_on": [],
+        }],
+        db_path=db_path,
+    )[-1]
+    blocked_step2 = execute_step(step2.id, db_path=db_path)
+    assert blocked_step2.status == "blocked"
+    assert blocked_step2.block_reason is not None
+
+    apprs2 = client.get("/approvals?status=pending", headers=headers).json()["approvals"]
+    appr2_id = [a["id"] for a in apprs2 if a["step_id"] == step2.id][0]
+    res_deny = client.post(f"/approvals/{appr2_id}/deny", headers=headers)
+    assert res_deny.status_code == 200
+
+    row_denied = Ledger.get_step(step2.id, db_path=db_path)
+    assert row_denied.status == "failed"
+    assert row_denied.block_reason is not None
+    assert row_denied.drift_reason is None
+
+
+def test_public_mode_six_step_plan_with_sabotage_and_repair(monkeypatch, test_env):
+    """In public mode with max_steps=8, a 6-step task plus 2 repair steps after sabotage succeeds.
+    Proves max_steps applies to newly proposed plan/replan size, not ledger cumulative total."""
+    monkeypatch.setenv("SAHA_PUBLIC_MODE", "true")
+    monkeypatch.setenv("SAHA_DEMO_MODE", "true")
+    oid = "test_owner_six_step_public"
+    db_path = test_env["db"]
+
+    task = Ledger.create_task("Six Step Public Task", owner_id=oid, db_path=db_path)
+
+    # 6 initial steps: 5 independent files + 1 combined file depending on 1
+    steps_data = [
+        {"intent": "Write f1", "tool": "write_file", "args": {"path": "f1.txt", "content": "f1 content"}, "probe": {}, "depends_on": []},
+        {"intent": "Write f2", "tool": "write_file", "args": {"path": "f2.txt", "content": "f2 content"}, "probe": {}, "depends_on": []},
+        {"intent": "Write f3", "tool": "write_file", "args": {"path": "f3.txt", "content": "f3 content"}, "probe": {}, "depends_on": []},
+        {"intent": "Write f4", "tool": "write_file", "args": {"path": "f4.txt", "content": "f4 content"}, "probe": {}, "depends_on": []},
+        {"intent": "Write f5", "tool": "write_file", "args": {"path": "f5.txt", "content": "f5 content"}, "probe": {}, "depends_on": []},
+        {"intent": "Write f6 summary", "tool": "write_file", "args": {"path": "f6.txt", "content": "f6 summary"}, "probe": {}, "depends_on": [1]},
+    ]
+    assert len(steps_data) == 6
+    steps = Ledger.add_steps(task.id, steps_data, db_path=db_path)
+    assert len(steps) == 6
+
+    # Mock Worker model for deterministic step execution
+    with patch("backend.executor.call_llm", return_value="Worker generated content"):
+        # Run all 6 steps
+        run_task(task.id, db_path=db_path)
+
+    summary = Ledger.get_task_summary(task.id, owner_id=oid, db_path=db_path)
+    assert summary["task"]["status"] == "complete"
+    assert all(s["status"] == "verified" for s in summary["steps"])
+
+    # Sabotage: delete f1.txt from disk
+    f1_disk = resolve_workspace_path("f1.txt", task_id=task.id, owner_id=oid)
+    assert f1_disk.exists()
+    f1_disk.unlink()
+    assert not f1_disk.exists()
+
+    # Mock replan_drift to return 2 repair steps (re-write f1 and re-combine f6)
+    from backend.planner import StepPlan
+    repair_step_plans = [
+        StepPlan(
+            idx=1,
+            intent="Repair f1",
+            tool="write_file",
+            args={"path": "f1.txt", "content": "repaired f1 content"},
+            probe={},
+            depends_on=[],
+        ),
+        StepPlan(
+            idx=2,
+            intent="Re-combine f6 summary",
+            tool="write_file",
+            args={"path": "f6.txt", "content": "repaired f6 summary"},
+            probe={},
+            depends_on=[1],
+        ),
+    ]
+
+    # Resume task: drift probe marks step 1 drifted, step 6 superseded, appends 2 repairs
+    with patch("backend.resume.replan_drift", return_value=repair_step_plans), \
+         patch("backend.executor.call_llm", return_value="Worker repaired content"):
+        resume_task(task.id, db_path=db_path)
+
+    summary_after = Ledger.get_task_summary(task.id, owner_id=oid, db_path=db_path)
+    assert summary_after["task"]["status"] == "complete"
+    # Total historical steps in ledger is 8 (6 original + 2 repair)
+    assert summary_after["total_steps_count"] == 8
+    # Step 1 stays drifted
+    assert summary_after["steps"][0]["status"] == "drifted"
+    assert summary_after["steps"][0]["drift_reason"] is not None
+    assert summary_after["steps"][0]["block_reason"] is None
+    # Step 6 is superseded
+    assert summary_after["steps"][5]["status"] == "superseded"
+    # Repair steps (7 and 8) are verified
+    assert summary_after["steps"][6]["status"] == "verified"
+    assert summary_after["steps"][7]["status"] == "verified"
+
 

@@ -616,7 +616,7 @@
               ${s.status === 'blocked' ? `
                 <div class="text-xs bg-purple-950/40 border border-purple-500/30 rounded-lg p-2.5 text-purple-200 font-mono flex items-center justify-between">
                   <div>
-                    <span class="font-bold text-purple-400 uppercase text-[10px]">Blocked:</span> ${s.drift_reason || 'Policy authorization required'}
+                    <span class="font-bold text-purple-400 uppercase text-[10px]">Blocked:</span> ${s.block_reason || 'Policy authorization required'}
                   </div>
                   <button onclick="openApprovalsModal()" class="px-2 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-[11px] font-sans font-semibold">
                     Review Approval
@@ -625,7 +625,7 @@
               ` : ''}
 
               <!-- Drift Reason / Superseded / Resolved metadata -->
-              ${s.drift_reason && s.status !== 'blocked' ? `
+              ${s.drift_reason ? `
                 <div class="text-xs bg-amber-950/40 border border-amber-500/30 rounded-lg p-2 text-amber-200 font-mono">
                   <div class="font-bold text-[10px] text-amber-400 uppercase">Reality Drift:</div>
                   ${s.drift_reason}

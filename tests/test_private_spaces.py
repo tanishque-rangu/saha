@@ -232,7 +232,8 @@ def test_policy_blocks_unauthorized_step_and_approvals_flow(client):
 
     step_row = detail["steps"][0]
     assert step_row["status"] == "blocked"
-    assert "evil.com" in step_row["drift_reason"]
+    assert "evil.com" in step_row["block_reason"]
+    assert step_row["drift_reason"] is None
 
     # Approvals list contains the pending approval
     appr_res = client.get("/approvals", headers=headers)

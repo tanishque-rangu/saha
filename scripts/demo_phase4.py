@@ -1,4 +1,6 @@
-"""Saha Phase 4 Proof Script.
+"""[MOCKED LLM/HTTP] Saha Phase 4 Proof Script.
+NOTE: This script uses stubbed LLM responses and mock step plans for offline demonstration.
+
 
 Demonstrates:
 1. Owner Isolation (two distinct tokens A and B via httpx; A cannot view/run/sabotage B).

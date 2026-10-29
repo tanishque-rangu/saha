@@ -48,7 +48,7 @@ class Policy(BaseModel):
         description="Whether autonomous drift repair is permitted.",
     )
     max_steps: int = Field(
-        default=5 if is_public_mode() else 10,
+        default=8 if is_public_mode() else 10,
         description="Maximum number of steps permitted in a single task DAG.",
     )
 
@@ -61,7 +61,7 @@ def get_default_policy() -> Policy:
             allowed_domains=["example.com", "wikipedia.org", "httpbin.org"],
             allowed_paths=["*"],
             auto_heal=True,
-            max_steps=5,
+            max_steps=8,
         )
     return Policy(
         allowed_tools=["write_file", "read_file", "run_shell", "http_get", "list_files"],
@@ -115,6 +115,13 @@ def set_owner_policy(owner_id: str, policy: Policy, db_path: Optional[str] = Non
     return policy
 
 
+def evaluate_plan_size(step_count: int, policy: Policy) -> Tuple[bool, Optional[str]]:
+    """Evaluate whether a newly proposed plan or replan size conforms to policy max_steps."""
+    if step_count > policy.max_steps:
+        return False, f"Proposed plan size ({step_count} steps) exceeds policy max_steps ({policy.max_steps})."
+    return True, None
+
+
 def evaluate_step_policy(
     tool: str,
     args: Dict[str, Any],
@@ -130,11 +137,7 @@ def evaluate_step_policy(
     if is_public_mode() and tool not in PUBLIC_ALLOWED_TOOLS:
         return False, f"Tool '{tool}' is strictly forbidden in public mode. Allowed tools: {sorted(PUBLIC_ALLOWED_TOOLS)}."
 
-    # 1. Step count check
-    if current_step_index > policy.max_steps:
-        return False, f"Step count ({current_step_index}) exceeds policy max_steps ({policy.max_steps})."
-
-    # 2. Tool permission check
+    # 1. Tool permission check
     if tool not in policy.allowed_tools:
         return False, f"Tool '{tool}' is not permitted by owner policy. Allowed tools: {policy.allowed_tools}."
 
@@ -257,9 +260,9 @@ def approve_request(
             (now, approval_id),
         )
 
-        # 2. Re-queue step to pending
+        # 2. Re-queue step to pending and clear block reason
         conn.execute(
-            "UPDATE steps SET status = 'pending', error = NULL WHERE id = ?",
+            "UPDATE steps SET status = 'pending', block_reason = NULL, error = NULL WHERE id = ?",
             (step_id,),
         )
 

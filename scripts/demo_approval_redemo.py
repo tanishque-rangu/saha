@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Saha Approval Re-Demo Script.
+"""[MOCKED LLM/HTTP] Saha Approval Re-Demo Script.
+NOTE: This script uses stubbed LLM and HTTP responses for offline demonstration.
+
 
 Executes ONE task in SAHA_PUBLIC_MODE=true demonstrating policy enforcement,
 blocking, approval with always_allow=true, and successful verified completion.

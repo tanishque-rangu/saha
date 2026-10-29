@@ -39,7 +39,7 @@ RUN chown -R appuser:appgroup /app
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
+    CMD python -c "import os, urllib.request; port = os.getenv('PORT', '8080'); urllib.request.urlopen(f'http://localhost:{port}/health')" || exit 1
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["uvicorn", "backend.api:app", "--host", "0.0.0.0", "--port", "8080"]

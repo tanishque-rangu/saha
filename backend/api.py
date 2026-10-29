@@ -380,6 +380,13 @@ def create_task(req: CreateTaskRequest, request: Request) -> Dict[str, Any]:
 
     # Policy enforcement on candidate steps
     owner_policy = get_owner_policy(owner_id)
+    if is_public_mode() and len(step_plans) > owner_policy.max_steps:
+        Ledger.update_task_status(task.id, "failed")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Task plan has {len(step_plans)} steps, which exceeds maximum allowed steps of {owner_policy.max_steps} in public mode.",
+        )
+
     steps_data = []
     has_blocked_steps = False
 
@@ -403,6 +410,7 @@ def create_task(req: CreateTaskRequest, request: Request) -> Dict[str, Any]:
             "probe": sp.probe,
             "depends_on": d_on,
             "status": "pending" if allowed else "blocked",
+            "block_reason": block_reason if not allowed else None,
             "error": block_reason if not allowed else None,
         }
         steps_data.append(step_dict)

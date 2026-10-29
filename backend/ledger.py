@@ -47,9 +47,10 @@ class Step:
     args_json: str
     result_json: Optional[str]
     probe_json: Optional[str]
-    status: str  # pending | running | done | verified | drifted | superseded | failed
-    drift_reason: Optional[str]
-    superseded_by: Optional[str]
+    status: str  # pending | running | done | verified | drifted | superseded | failed | blocked
+    drift_reason: Optional[str] = None
+    block_reason: Optional[str] = None
+    superseded_by: Optional[str] = None
     resolved_by: Optional[str] = None
     depends_on_json: str = "[]"
     error: Optional[str] = None
@@ -192,13 +193,14 @@ class Ledger:
                 depends_on = s.get("depends_on", [])
                 depends_on_json = json.dumps(depends_on) if not isinstance(depends_on, str) else depends_on
                 step_error = s.get("error")
+                block_reason = s.get("block_reason") or (s.get("error") if step_status == "blocked" else None)
 
                 conn.execute(
                     """
-                    INSERT INTO steps (id, task_id, idx, seq, intent, tool, args_json, probe_json, status, error, resolved_by, depends_on_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+                    INSERT INTO steps (id, task_id, idx, seq, intent, tool, args_json, probe_json, status, error, block_reason, resolved_by, depends_on_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
                     """,
-                    (sid, task_id, idx, curr_seq, intent, tool, args_json, probe_json, step_status, step_error, depends_on_json),
+                    (sid, task_id, idx, curr_seq, intent, tool, args_json, probe_json, step_status, step_error, block_reason, depends_on_json),
                 )
             conn.execute("UPDATE tasks SET updated_at = ? WHERE id = ?", (now, task_id))
 
@@ -212,7 +214,7 @@ class Ledger:
             conn.execute(
                 """
                 UPDATE steps
-                SET status = 'blocked', drift_reason = ?, error = ?, finished_at = ?
+                SET status = 'blocked', block_reason = ?, error = ?, finished_at = ?
                 WHERE id = ?
                 """,
                 (str(reason), str(reason), now, step_id),
@@ -251,6 +253,7 @@ class Ledger:
                     probe_json=r["probe_json"],
                     status=r["status"],
                     drift_reason=r["drift_reason"],
+                    block_reason=r["block_reason"] if "block_reason" in r.keys() else None,
                     superseded_by=r["superseded_by"],
                     resolved_by=r["resolved_by"] if "resolved_by" in r.keys() else None,
                     depends_on_json=r["depends_on_json"] if "depends_on_json" in r.keys() else "[]",
@@ -280,6 +283,7 @@ class Ledger:
                 probe_json=r["probe_json"],
                 status=r["status"],
                 drift_reason=r["drift_reason"],
+                block_reason=r["block_reason"] if "block_reason" in r.keys() else None,
                 superseded_by=r["superseded_by"],
                 resolved_by=r["resolved_by"] if "resolved_by" in r.keys() else None,
                 depends_on_json=r["depends_on_json"] if "depends_on_json" in r.keys() else "[]",

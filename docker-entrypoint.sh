@@ -7,6 +7,11 @@ APP_USER="${SAHA_APP_USER:-appuser}"
 APP_UID=10001
 APP_GID=10001
 
+# Dynamic cloud PORT handling (Render, Railway set $PORT)
+if [ -n "$PORT" ] && [ "$PORT" != "8080" ]; then
+    set -- $(echo "$@" | sed "s/--port 8080/--port $PORT/")
+fi
+
 # If running as root (UID 0), fix permissions on data directory and drop privileges
 if [ "$(id -u)" = "0" ]; then
     mkdir -p "$DATA_DIR" "$DATA_DIR/workspace"

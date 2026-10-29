@@ -61,7 +61,7 @@ All model inference routes strictly through `backend/llm.py` via the OpenAI Pyth
 | **WORKER** | `nvidia/nemotron-3-super-120b-a12b` | Generates verified file contents, analysis scripts, and performs synthetic workflows inside the task workspace sandbox. | **2,430 ms** | 3,696 prompt / 8,872 completion |
 | **FAST** | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` | Synthesizes a factual, 1-sentence drift explanation from structured probe failure data without guessing causes. Runs non-blocking in background. | **5,817 ms** | 827 prompt / 2,004 completion |
 
-*\*Empirical averages recorded directly from 58 real API calls in `llm_calls` SQLite telemetry table during development.*
+*\*Empirical averages recorded directly from real API calls in `llm_calls` SQLite telemetry table during development.*
 
 ---
 
@@ -174,40 +174,70 @@ Saha is engineered with defensive sandbox boundaries:
 5. **Public Mode Safeguards**:
    - Max goal length capped at 300 characters.
    - In-memory IP rate limiter (10 task creations per hour per IP).
-   - Domain allowlist restriction (`SAHA_HTTP_ALLOWLIST`).
+   - Domain allowlist restriction (`allowed_domains`).
    - Generic 500 responses with zero path leakage or stack traces.
 6. **Honest Limitations**:
    - **DNS Rebinding**: While IP resolution is checked pre-flight, a malicious DNS server altering records between DNS resolution and HTTP socket connection (TOCTOU) remains an inherent limitation of application-level validation. Production hardening would mandate network-layer egress proxies or patched transport adapters.
 
 ---
 
-## Deployment
+## Deploy
 
-### Docker Deployment
+Saha packages into a self-contained, unprivileged Docker container designed to run on standard container hosting providers (such as Docker hosts, Render, or Railway).
+
+### Docker Image Build & Run
+
 ```bash
-# Build the container image
+# Build the production container image
 docker build -t saha:latest .
 
-# Run container with external environment file and persistent data volume
+# Run with persistent volume mounted to /data
 docker run -d \
   --name saha \
   -p 8080:8080 \
-  --env-file .env \
+  -e NEBIUS_API_KEY="your-nebius-api-key" \
+  -e SAHA_PUBLIC_MODE=true \
+  -e SAHA_DEMO_MODE=true \
+  -e SAHA_REQUIRE_PERSISTENT=true \
   -v saha_data:/data \
   saha:latest
 ```
 
-The container runs as non-root user `appuser:appgroup` (UID 10001) and includes an automated healthcheck on `/health`.
-A mounted host volume bound to `/data` must be writable by UID 10001 (`chown -R 10001:10001 /path/to/host/data`) or the container must be started as root (`docker run -u root ...`) so `docker-entrypoint.sh` can automatically fix ownership before dropping privileges to `appuser` via `gosu`.
+### Required & Supported Environment Variables
 
-When `SAHA_REQUIRE_PERSISTENT=true` is set, Saha strictly enforces that the configured data storage is persistent and writable. If the data volume cannot be written or points to ephemeral temporary storage, the application immediately aborts startup with an informative error rather than silently risking data loss.
+| Variable | Required | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `NEBIUS_API_KEY` | **Yes** | — | Nebius Token Factory API key for PLANNER, WORKER, and FAST models. |
+| `SAHA_PUBLIC_MODE` | No | `true` (in Docker) | Enables multi-tenant private owner spaces, token hashing (`X-Saha-Owner`), and disables `run_shell`. |
+| `SAHA_DEMO_MODE` | No | `true` (in Docker) | Enables live reality drift simulation endpoints (`/tasks/{id}/sabotage`). |
+| `SAHA_REQUIRE_PERSISTENT`| No | `false` | When `true`, startup checks enforce that `/data` resides on a persistent, non-ephemeral volume. |
+| `SAHA_DB_PATH` | No | `/data/saha.db` | Absolute path to the SQLite ledger database. |
+| `SAHA_WORKSPACE_ROOT` | No | `/data/workspace` | Absolute path to the sandboxed workspace root directory. |
+| `PORT` | No | `8080` | Port for the HTTP server to bind to (automatically handled by `docker-entrypoint.sh`). |
 
-### Render Blueprint Deployment
-Deploy Saha directly to [Render](https://render.com) using the included [render.yaml](render.yaml) blueprint:
-1. Connect your repository to Render.
-2. Select **Blueprints** and choose `render.yaml`.
-3. Provide your `NEBIUS_API_KEY` in the environment settings prompt.
-4. Render automatically provisions a 1GB persistent disk at `/data`, mounts the container, and verifies health via `/health`.
+### Persistent Storage at `/data` (Must Persist)
+
+Saha's core capability is an append-only state ledger and task file recovery across restarts. The `/data` volume **must persist across container restarts and redeployments**:
+- `saha.db` contains tasks, immutable steps, approval audit records, and policy definitions.
+- `workspace/` contains tenant files and verifiable artifacts.
+
+If `/data` is ephemeral, task history and workspace states are lost upon container recreation. When running as root, `docker-entrypoint.sh` automatically creates `/data/workspace`, sets ownership to UID `10001:10001`, and drops privileges to `appuser` via `gosu`.
+
+### Dynamic PORT Handling
+
+Container platforms like Render and Railway dynamically assign an external HTTP port via the `$PORT` environment variable (e.g., `PORT=10000`). `docker-entrypoint.sh` inspects `$PORT` at startup and binds `uvicorn` and container healthchecks accordingly.
+
+### Short Notes for Railway and Render
+
+- **Render**:
+  - The repository includes an optional [render.yaml](render.yaml) blueprint configuring a `starter` web service, Docker runtime, healthcheck path `/health`, and a 1 GB persistent disk at `/data`.
+  - In manual setup, select **Web Service -> Docker**, attach a persistent disk mounted at `/data`, and set `NEBIUS_API_KEY` in environment secrets.
+- **Railway**:
+  - Deploy from GitHub repository using the Dockerfile.
+  - Add a **Persistent Volume** mounted at `/data`.
+  - Add `NEBIUS_API_KEY` under Service Variables. Railway automatically injects `$PORT`.
+- **Tested Verification**:
+  - Local container builds, entrypoint privilege drops (UID `10001`), root volume permissions adjustments, dynamic `$PORT` rewriting, and GitHub Actions CI smoke testing are tested and verified. Cloud deployments on third-party PaaS platforms (Railway/Render) depend on their respective persistent disk provisioning SLAs.
 
 ---
 

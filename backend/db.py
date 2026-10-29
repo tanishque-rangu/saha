@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS steps (
     probe_json TEXT,
     status TEXT NOT NULL CHECK(status IN ('pending', 'running', 'done', 'verified', 'drifted', 'superseded', 'failed', 'blocked')),
     drift_reason TEXT,
+    block_reason TEXT,
     superseded_by TEXT REFERENCES steps(id),
     resolved_by TEXT REFERENCES steps(id),
     depends_on_json TEXT NOT NULL DEFAULT '[]',
@@ -251,6 +252,8 @@ def init_db(db_path: Optional[str] = None) -> None:
             conn.execute("ALTER TABLE steps ADD COLUMN seq INTEGER NOT NULL DEFAULT 0;")
         if "drift_reason" not in step_cols:
             conn.execute("ALTER TABLE steps ADD COLUMN drift_reason TEXT;")
+        if "block_reason" not in step_cols:
+            conn.execute("ALTER TABLE steps ADD COLUMN block_reason TEXT;")
         if "superseded_by" not in step_cols:
             conn.execute("ALTER TABLE steps ADD COLUMN superseded_by TEXT REFERENCES steps(id);")
         if "resolved_by" not in step_cols:
