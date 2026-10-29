@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: saha
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: standard
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      - key: SAHA_PUBLIC_MODE
+        value: "true"
+      - key: SAHA_DEMO_MODE
+        value: "false"
+      - key: SAHA_REQUIRE_PERSISTENT
+        value: "true"
+      - key: NEBIUS_API_KEY
+        sync: false
+    disk:
+      name: saha-data
+      mountPath: /data
+      sizeGB: 1

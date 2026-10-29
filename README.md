@@ -181,9 +181,9 @@ Saha is engineered with defensive sandbox boundaries:
 
 ---
 
-## Docker Deployment
+## Deployment
 
-### Build and Run with Docker
+### Docker Deployment
 ```bash
 # Build the container image
 docker build -t saha:latest .
@@ -197,7 +197,17 @@ docker run -d \
   saha:latest
 ```
 
-The container runs as non-root user `appuser:appgroup` (UID 10001) and includes an automated healthcheck on `/health`. Note that any mounted host volume bound to `/data` must be writable by UID 10001 (`chown -R 10001:10001 /path/to/host/data`).
+The container runs as non-root user `appuser:appgroup` (UID 10001) and includes an automated healthcheck on `/health`.
+A mounted host volume bound to `/data` must be writable by UID 10001 (`chown -R 10001:10001 /path/to/host/data`) or the container must be started as root (`docker run -u root ...`) so `docker-entrypoint.sh` can automatically fix ownership before dropping privileges to `appuser` via `gosu`.
+
+When `SAHA_REQUIRE_PERSISTENT=true` is set, Saha strictly enforces that the configured data storage is persistent and writable. If the data volume cannot be written or points to ephemeral temporary storage, the application immediately aborts startup with an informative error rather than silently risking data loss.
+
+### Render Blueprint Deployment
+Deploy Saha directly to [Render](https://render.com) using the included [render.yaml](render.yaml) blueprint:
+1. Connect your repository to Render.
+2. Select **Blueprints** and choose `render.yaml`.
+3. Provide your `NEBIUS_API_KEY` in the environment settings prompt.
+4. Render automatically provisions a 1GB persistent disk at `/data`, mounts the container, and verifies health via `/health`.
 
 ---
 

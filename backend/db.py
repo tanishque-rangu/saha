@@ -42,10 +42,14 @@ def is_dir_writable(path: Path) -> bool:
 
 
 def check_and_init_data_dirs() -> None:
-    """Verify SAHA_DB_PATH directory and SAHA_WORKSPACE_ROOT are writable, else fallback to /tmp/saha-data."""
+    """Verify SAHA_DB_PATH directory and SAHA_WORKSPACE_ROOT are writable, else fallback to /tmp/saha-data.
+    
+    If SAHA_REQUIRE_PERSISTENT is enabled, raises RuntimeError if storage is not writable or persistent.
+    """
     global DATA_DIR_STATUS
     configured_db = os.getenv("SAHA_DB_PATH")
     configured_ws = os.getenv("SAHA_WORKSPACE_ROOT")
+    require_persistent = os.getenv("SAHA_REQUIRE_PERSISTENT", "false").lower() in ("true", "1", "yes")
 
     db_dir = Path(configured_db).parent if configured_db else DEFAULT_DB_PATH.parent
     ws_dir = Path(configured_ws) if configured_ws else (PROJECT_ROOT / "workspace")
@@ -59,7 +63,17 @@ def check_and_init_data_dirs() -> None:
         is_tmp = "/tmp" in str(db_dir) or "\\tmp" in str(db_dir) or "temp" in str(db_dir).lower()
         DATA_DIR_STATUS["data_persistent"] = not is_tmp
         DATA_DIR_STATUS["effective_data_dir"] = "/data" if str(db_dir).startswith("/data") else str(db_dir)
+
+        if require_persistent and is_tmp:
+            raise RuntimeError(
+                f"SAHA_REQUIRE_PERSISTENT is enabled, but configured storage '{DATA_DIR_STATUS['effective_data_dir']}' is temporary."
+            )
     else:
+        if require_persistent:
+            raise RuntimeError(
+                "SAHA_REQUIRE_PERSISTENT is enabled, but the configured data directory is not writable."
+            )
+
         logger.warning("Configured database or workspace directory is not writable. Falling back to /tmp/saha-data.")
         fallback_root = Path(tempfile.gettempdir()) / "saha-data"
         fallback_db_dir = fallback_root

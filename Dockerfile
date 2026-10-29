@@ -10,6 +10,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Install gosu for root-to-nonroot entrypoint privilege dropping
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gosu && \
+    rm -rf /var/lib/apt/lists/*
+
 # Create non-root user and persistent data directories
 RUN groupadd -g 10001 appgroup && \
     useradd -u 10001 -g appgroup -s /bin/bash -m appuser && \
@@ -25,6 +30,8 @@ COPY backend/ ./backend/
 COPY cli/ ./cli/
 COPY skills/ ./skills/
 COPY web/ ./web/
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Ensure app directory permissions
 RUN chown -R appuser:appgroup /app
@@ -36,4 +43,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["uvicorn", "backend.api:app", "--host", "0.0.0.0", "--port", "8080"]

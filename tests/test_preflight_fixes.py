@@ -344,6 +344,19 @@ def test_health_data_dir_status(test_env):
     assert "token" not in data["data_dir"].lower()
 
 
+def test_saha_require_persistent_enforcement(monkeypatch):
+    """When SAHA_REQUIRE_PERSISTENT=true and data dir is unwritable, raises RuntimeError."""
+    monkeypatch.setenv("SAHA_REQUIRE_PERSISTENT", "true")
+
+    unwritable_path = "/nonexistent_root_dir_12345/data/saha.db" if sys.platform != "win32" else "Z:\\nonexistent_drive_12345\\saha.db"
+    monkeypatch.setenv("SAHA_DB_PATH", unwritable_path)
+    monkeypatch.setenv("SAHA_WORKSPACE_ROOT", unwritable_path)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        check_and_init_data_dirs()
+    assert "SAHA_REQUIRE_PERSISTENT is enabled" in str(exc_info.value)
+
+
 # =========================================================================
 # 6. LINUX-SAFE TESTS & SYMLINK ESCAPES
 # =========================================================================
