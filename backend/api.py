@@ -4,6 +4,7 @@ Provides endpoints for private spaces, task creation, execution, drift reconcili
 approvals, policies, privacy ledger egress, and sabotage demo.
 """
 
+from contextlib import asynccontextmanager
 import logging
 import os
 import re
@@ -56,6 +57,18 @@ try:
 except Exception:
     pass
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Production lifespan hook: executes startup recovery on real server boot."""
+    check_and_init_data_dirs()
+    try:
+        Ledger.recover_stale_running_tasks()
+    except Exception:
+        pass
+    yield
+
+
 app = FastAPI(
     title="Saha API",
     description="Persistent, private, drift-resilient personal AI ledger server.",
@@ -63,6 +76,7 @@ app = FastAPI(
     docs_url=None if is_public_mode() else "/docs",
     redoc_url=None if is_public_mode() else "/redoc",
     openapi_url=None if is_public_mode() else "/openapi.json",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
