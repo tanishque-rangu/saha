@@ -81,7 +81,7 @@ Output MUST be a JSON object with a single key "steps":
 """
 
 
-def generate_plan(goal: str, context: Optional[str] = None, max_retries: int = 1) -> List[StepPlan]:
+def generate_plan(goal: str, context: Optional[str] = None, owner_id: Optional[str] = None, max_retries: int = 1) -> List[StepPlan]:
     """Generate an ordered execution plan from a goal using the PLANNER model."""
     user_prompt = f"Goal: {goal}"
     if context:
@@ -102,6 +102,8 @@ def generate_plan(goal: str, context: Optional[str] = None, max_retries: int = 1
                 messages=messages,
                 role="planner",
                 temperature=0.0,
+                owner_id=owner_id,
+                context_tags=["role:planner", "goal_plan"],
             )
             if isinstance(raw_dict, list):
                 raw_dict = {"steps": raw_dict}
@@ -139,6 +141,7 @@ def replan_drift(
     goal: str,
     ledger_steps: List[Dict[str, Any]],
     drift_report: Dict[str, Any],
+    owner_id: Optional[str] = None,
     max_retries: int = 1,
 ) -> List[StepPlan]:
     """Replan only remaining and drifted work when reality diverges from the ledger."""
@@ -168,6 +171,8 @@ CRITICAL RULES FOR DRIFT REPAIR:
         messages=messages,
         role="planner",
         temperature=0.0,
+        owner_id=owner_id,
+        context_tags=["role:planner", "drift_replan"],
     )
     if isinstance(raw_dict, list):
         raw_dict = {"steps": raw_dict}

@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Union
 
-from backend.db import get_db, init_db
+from backend.db import DEFAULT_OWNER_ID, get_db, init_db
 
 
 def utc_now_iso() -> str:
@@ -26,6 +26,7 @@ def utc_now_iso() -> str:
 @dataclass
 class Task:
     id: str
+    owner_id: str
     goal: str
     status: str  # planning | running | paused | complete | failed
     created_at: str
@@ -80,32 +81,38 @@ class Ledger:
     """Manages transactional, append-only state changes for Tasks and Steps."""
 
     @staticmethod
-    def create_task(goal: str, task_id: Optional[str] = None, db_path: Optional[str] = None) -> Task:
+    def create_task(goal: str, owner_id: Optional[str] = None, task_id: Optional[str] = None, db_path: Optional[str] = None) -> Task:
         init_db(db_path)
         tid = task_id or str(uuid.uuid4())
         now = utc_now_iso()
+        effective_owner = DEFAULT_OWNER_ID if (not owner_id or owner_id == "default") else owner_id
         with get_db(db_path) as conn:
             conn.execute(
                 """
-                INSERT INTO tasks (id, goal, status, created_at, updated_at)
-                VALUES (?, ?, 'planning', ?, ?)
+                INSERT INTO tasks (id, owner_id, goal, status, created_at, updated_at)
+                VALUES (?, ?, ?, 'planning', ?, ?)
                 """,
-                (tid, goal.strip(), now, now),
+                (tid, effective_owner, goal.strip(), now, now),
             )
-        task = Ledger.get_task(tid, db_path)
+        task = Ledger.get_task(tid, db_path=db_path)
         if not task:
             raise RuntimeError(f"Failed to create task {tid}")
         return task
 
     @staticmethod
-    def get_task(task_id: str, db_path: Optional[str] = None) -> Optional[Task]:
+    def get_task(task_id: str, owner_id: Optional[str] = None, db_path: Optional[str] = None) -> Optional[Task]:
         init_db(db_path)
         with get_db(db_path) as conn:
-            row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            if owner_id:
+                effective_owner = DEFAULT_OWNER_ID if owner_id == "default" else owner_id
+                row = conn.execute("SELECT * FROM tasks WHERE id = ? AND owner_id = ?", (task_id, effective_owner)).fetchone()
+            else:
+                row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
             if not row:
                 return None
             return Task(
                 id=row["id"],
+                owner_id=row["owner_id"] if "owner_id" in row.keys() else "default",
                 goal=row["goal"],
                 status=row["status"],
                 created_at=row["created_at"],
@@ -113,22 +120,29 @@ class Ledger:
             )
 
     @staticmethod
-    def list_tasks(status: Optional[str] = None, limit: int = 50, db_path: Optional[str] = None) -> List[Task]:
+    def list_tasks(owner_id: Optional[str] = None, status: Optional[str] = None, limit: int = 50, db_path: Optional[str] = None) -> List[Task]:
         init_db(db_path)
         with get_db(db_path) as conn:
+            query = "SELECT * FROM tasks"
+            conditions = []
+            params: List[Any] = []
+            if owner_id:
+                effective_owner = DEFAULT_OWNER_ID if owner_id == "default" else owner_id
+                conditions.append("owner_id = ?")
+                params.append(effective_owner)
             if status:
-                rows = conn.execute(
-                    "SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC LIMIT ?",
-                    (status, limit),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?",
-                    (limit,),
-                ).fetchall()
+                conditions.append("status = ?")
+                params.append(status)
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+
+            rows = conn.execute(query, params).fetchall()
             return [
                 Task(
                     id=r["id"],
+                    owner_id=r["owner_id"] if "owner_id" in r.keys() else "default",
                     goal=r["goal"],
                     status=r["status"],
                     created_at=r["created_at"],
@@ -170,23 +184,43 @@ class Ledger:
                 idx = int(s.get("idx", curr_seq))
                 intent = str(s["intent"]).strip()
                 tool = str(s["tool"]).strip()
+                step_status = s.get("status", "pending")
                 args = s.get("args", {})
                 args_json = json.dumps(args) if not isinstance(args, str) else args
                 probe = s.get("probe", {})
                 probe_json = json.dumps(probe) if not isinstance(probe, str) else probe
                 depends_on = s.get("depends_on", [])
                 depends_on_json = json.dumps(depends_on) if not isinstance(depends_on, str) else depends_on
+                step_error = s.get("error")
 
                 conn.execute(
                     """
-                    INSERT INTO steps (id, task_id, idx, seq, intent, tool, args_json, probe_json, status, resolved_by, depends_on_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?)
+                    INSERT INTO steps (id, task_id, idx, seq, intent, tool, args_json, probe_json, status, error, resolved_by, depends_on_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
                     """,
-                    (sid, task_id, idx, curr_seq, intent, tool, args_json, probe_json, depends_on_json),
+                    (sid, task_id, idx, curr_seq, intent, tool, args_json, probe_json, step_status, step_error, depends_on_json),
                 )
             conn.execute("UPDATE tasks SET updated_at = ? WHERE id = ?", (now, task_id))
 
         return Ledger.get_steps(task_id, db_path=db_path)
+
+    @staticmethod
+    def mark_step_blocked(step_id: str, reason: str, db_path: Optional[str] = None) -> Step:
+        init_db(db_path)
+        now = utc_now_iso()
+        with get_db(db_path) as conn:
+            conn.execute(
+                """
+                UPDATE steps
+                SET status = 'blocked', drift_reason = ?, error = ?, finished_at = ?
+                WHERE id = ?
+                """,
+                (str(reason), str(reason), now, step_id),
+            )
+        step = Ledger.get_step(step_id, db_path)
+        if not step:
+            raise RuntimeError(f"Step {step_id} not found")
+        return step
 
     @staticmethod
     def get_steps(task_id: str, include_superseded: bool = True, db_path: Optional[str] = None) -> List[Step]:
@@ -456,8 +490,8 @@ class Ledger:
         return step
 
     @staticmethod
-    def get_task_summary(task_id: str, db_path: Optional[str] = None) -> Dict[str, Any]:
-        task = Ledger.get_task(task_id, db_path)
+    def get_task_summary(task_id: str, owner_id: Optional[str] = None, db_path: Optional[str] = None) -> Dict[str, Any]:
+        task = Ledger.get_task(task_id, owner_id=owner_id, db_path=db_path)
         if not task:
             raise ValueError(f"Task {task_id} not found")
 
@@ -472,6 +506,7 @@ class Ledger:
             "drifted": 0,
             "superseded": 0,
             "failed": 0,
+            "blocked": 0,
         }
         drifted_steps = []
         for s in all_steps:
@@ -493,7 +528,7 @@ class Ledger:
         drifted = [s for s in all_steps if s.status == "drifted"]
 
         has_incomplete_active = any(
-            s.status in ("pending", "running", "failed") for s in non_superseded
+            s.status in ("pending", "running", "failed", "blocked") for s in non_superseded
         )
         non_superseded_non_drifted_verified = (
             len(non_superseded) > 0 and

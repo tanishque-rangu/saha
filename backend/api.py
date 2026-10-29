@@ -1,36 +1,54 @@
 """Saha FastAPI Backend Server.
 
-Provides endpoints for task creation, execution, drift reconciliation,
-telemetry metrics, health checks, and demo sabotage simulation.
+Provides endpoints for private spaces, task creation, execution, drift reconciliation,
+approvals, policies, privacy ledger egress, and sabotage demo.
 """
 
+import logging
 import os
 import re
+import secrets
 import threading
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from backend.db import get_llm_metrics
+from backend.db import (
+    delete_owner_space,
+    get_db_path,
+    get_llm_metrics,
+    get_owner_egress_logs,
+    hash_owner_token,
+)
 from backend.executor import is_public_mode, run_task
 from backend.ledger import Ledger
 from backend.planner import generate_plan
+from backend.policy import (
+    Policy,
+    approve_request,
+    create_approval,
+    deny_request,
+    evaluate_step_policy,
+    get_owner_approvals,
+    get_owner_policy,
+    set_owner_policy,
+)
 from backend.resume import resume_task
-from backend.tools.sandbox import get_workspace_dir, resolve_workspace_path
+from backend.tools.sandbox import delete_owner_workspace, resolve_workspace_path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = PROJECT_ROOT / "web"
 
 app = FastAPI(
     title="Saha API",
-    description="Persistent, drift-resilient personal AI ledger server.",
-    version="1.0.0",
+    description="Persistent, private, drift-resilient personal AI ledger server.",
+    version="1.1.0",
 )
 
 app.add_middleware(
@@ -38,11 +56,29 @@ app.add_middleware(
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
 )
 
-# In-memory IP rate limiter for POST endpoints in public mode
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    """Ensure no absolute paths or raw stack traces leak to callers."""
+    logging.exception(f"Unhandled server error: {exc}")
+    if is_public_mode():
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "An internal server error occurred. Details suppressed in public mode."}
+        )
+    msg = str(exc)
+    msg = re.sub(r'[A-Za-z]:\\[\w\s\\.-]+', '[PATH]', msg)
+    msg = re.sub(r'/[\w\s/.-]+', '[PATH]', msg)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {msg}"}
+    )
+
+# In-memory rate limiters for POST /tasks in public mode
 IP_POST_HISTORY = defaultdict(list)
+OWNER_POST_HISTORY = defaultdict(list)
 RATE_LIMIT_MAX_PER_HOUR = 10
 RATE_LIMIT_WINDOW_SECONDS = 3600
 
@@ -51,24 +87,49 @@ def is_demo_mode() -> bool:
     return os.getenv("SAHA_DEMO_MODE", "true").lower() in ("true", "1", "yes")
 
 
-def check_ip_rate_limit(client_ip: str) -> None:
-    """Enforce in-memory token bucket: 10 task creations per hour per IP in public mode."""
+def get_owner_info(request: Request) -> Tuple[str, str]:
+    """Extract owner token and hashed owner_id from request header X-Saha-Owner."""
+    raw_token = request.headers.get("X-Saha-Owner", "").strip()
+    if not raw_token:
+        raw_token = "default-anonymous-owner"
+    owner_id = hash_owner_token(raw_token)
+    return raw_token, owner_id
+
+
+def check_rate_limits(client_ip: str, owner_id: str) -> None:
+    """Enforce in-memory token bucket per-IP and per-owner in public mode."""
     if not is_public_mode():
         return
     now = time.time()
-    history = IP_POST_HISTORY[client_ip]
-    valid_history = [t for t in history if now - t < RATE_LIMIT_WINDOW_SECONDS]
-    IP_POST_HISTORY[client_ip] = valid_history
-    if len(valid_history) >= RATE_LIMIT_MAX_PER_HOUR:
+
+    # Check IP
+    ip_hist = [t for t in IP_POST_HISTORY[client_ip] if now - t < RATE_LIMIT_WINDOW_SECONDS]
+    IP_POST_HISTORY[client_ip] = ip_hist
+    if len(ip_hist) >= RATE_LIMIT_MAX_PER_HOUR:
         raise HTTPException(
             status_code=429,
-            detail=f"Too Many Requests: Rate limit exceeded ({RATE_LIMIT_MAX_PER_HOUR} task creations per hour).",
+            detail=f"Too Many Requests: IP rate limit exceeded ({RATE_LIMIT_MAX_PER_HOUR} task creations per hour).",
         )
+
+    # Check Owner
+    owner_hist = [t for t in OWNER_POST_HISTORY[owner_id] if now - t < RATE_LIMIT_WINDOW_SECONDS]
+    OWNER_POST_HISTORY[owner_id] = owner_hist
+    if len(owner_hist) >= RATE_LIMIT_MAX_PER_HOUR:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too Many Requests: Owner rate limit exceeded ({RATE_LIMIT_MAX_PER_HOUR} task creations per hour).",
+        )
+
     IP_POST_HISTORY[client_ip].append(now)
+    OWNER_POST_HISTORY[owner_id].append(now)
 
 
 class CreateTaskRequest(BaseModel):
     goal: str = Field(..., min_length=1, description="Goal to execute")
+
+
+class ApproveActionRequest(BaseModel):
+    always_allow: bool = Field(default=False, description="Whether to update owner policy with this permission.")
 
 
 @app.get("/health")
@@ -82,14 +143,120 @@ def health() -> Dict[str, Any]:
 
 
 @app.get("/metrics")
-def metrics() -> Dict[str, Any]:
-    return get_llm_metrics()
+def metrics(request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    return get_llm_metrics(owner_id=owner_id if is_public_mode() else None)
 
+
+# -------------------------------------------------------------------------
+# PRIVATE SPACES & OWNER MANAGEMENT
+# -------------------------------------------------------------------------
+
+@app.post("/owner/pair-link")
+def pair_link(request: Request) -> Dict[str, Any]:
+    """Return a pairing link with the owner's token in the URL fragment."""
+    raw_token = request.headers.get("X-Saha-Owner", "").strip()
+    if not raw_token:
+        raw_token = secrets.token_hex(16)
+    owner_id = hash_owner_token(raw_token)
+    base_url = str(request.base_url).rstrip("/")
+    pair_url = f"{base_url}/#pair={raw_token}"
+    return {
+        "pair_link": pair_url,
+        "pair_url": pair_url,
+        "token": raw_token,
+        "token_preview": f"{raw_token[:8]}...",
+        "owner_id": owner_id,
+        "note": "Bearer-token pairing: anyone with this link gains full access to this private space. Not full authentication.",
+    }
+
+
+@app.delete("/owner/space")
+def delete_space(request: Request) -> Dict[str, Any]:
+    """Delete ALL tasks, steps, files, policies, approvals, and egress logs for this owner."""
+    _, owner_id = get_owner_info(request)
+    db_res = delete_owner_space(owner_id)
+    delete_owner_workspace(owner_id)
+    return {
+        "status": "deleted",
+        "owner_id": owner_id,
+        "deleted_tasks": db_res["deleted_tasks"],
+        "message": "All workspace files, tasks, approvals, policies, and privacy ledger records deleted.",
+    }
+
+
+# -------------------------------------------------------------------------
+# POLICY & APPROVALS
+# -------------------------------------------------------------------------
+
+@app.get("/policy")
+def get_policy(request: Request) -> Dict[str, Any]:
+    """Return the owner's current execution policy."""
+    _, owner_id = get_owner_info(request)
+    policy = get_owner_policy(owner_id)
+    return {"owner_id": owner_id, "policy": policy.model_dump()}
+
+
+@app.put("/policy")
+def update_policy(policy_data: Policy, request: Request) -> Dict[str, Any]:
+    """Update the owner's execution policy."""
+    _, owner_id = get_owner_info(request)
+    saved = set_owner_policy(owner_id, policy_data)
+    return {"status": "updated", "owner_id": owner_id, "policy": saved.model_dump()}
+
+
+@app.get("/approvals")
+def list_approvals(request: Request, status: Optional[str] = None) -> Dict[str, Any]:
+    """List pending or resolved approvals for the current owner."""
+    _, owner_id = get_owner_info(request)
+    approvals = get_owner_approvals(owner_id, status=status)
+    return {"owner_id": owner_id, "approvals": approvals}
+
+
+@app.post("/approvals/{approval_id}/approve")
+def approve_step(approval_id: str, request: Request, body: Optional[ApproveActionRequest] = None) -> Dict[str, Any]:
+    """Approve a blocked step, re-queue to pending, and optionally update policy."""
+    _, owner_id = get_owner_info(request)
+    always_allow = body.always_allow if body else False
+    try:
+        res = approve_request(approval_id, owner_id=owner_id, always_allow=always_allow)
+        return res
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Approval not found")
+
+
+@app.post("/approvals/{approval_id}/deny")
+def deny_step(approval_id: str, request: Request) -> Dict[str, Any]:
+    """Deny a blocked step and mark it failed."""
+    _, owner_id = get_owner_info(request)
+    try:
+        res = deny_request(approval_id, owner_id=owner_id)
+        return res
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Approval not found")
+
+
+# -------------------------------------------------------------------------
+# PRIVACY LEDGER (EGRESS)
+# -------------------------------------------------------------------------
+
+@app.get("/egress")
+def get_egress_logs(request: Request, limit: int = 50) -> Dict[str, Any]:
+    """Return the owner's privacy ledger egress logs (character and redaction counts, NO content)."""
+    _, owner_id = get_owner_info(request)
+    logs = get_owner_egress_logs(owner_id, limit=limit)
+    return {"owner_id": owner_id, "egress": logs, "egress_logs": logs}
+
+
+# -------------------------------------------------------------------------
+# TASKS & LEDGER
+# -------------------------------------------------------------------------
 
 @app.post("/tasks")
 def create_task(req: CreateTaskRequest, request: Request) -> Dict[str, Any]:
     client_ip = request.client.host if request.client else "127.0.0.1"
-    check_ip_rate_limit(client_ip)
+    _, owner_id = get_owner_info(request)
+    check_rate_limits(client_ip, owner_id)
 
     goal = req.goal.strip()
     if is_public_mode() and len(goal) > 300:
@@ -98,84 +265,124 @@ def create_task(req: CreateTaskRequest, request: Request) -> Dict[str, Any]:
             detail="Task goal exceeds maximum allowed length of 300 characters in public mode.",
         )
 
-    task = Ledger.create_task(goal)
+    task = Ledger.create_task(goal, owner_id=owner_id)
 
     try:
-        step_plans = generate_plan(goal)
+        step_plans = generate_plan(goal, owner_id=owner_id)
     except Exception as e:
         Ledger.update_task_status(task.id, "failed")
         msg = "Planning failed. Please try again." if is_public_mode() else f"Planning failed: {e}"
         raise HTTPException(status_code=500, detail=msg)
 
+    # Policy enforcement on candidate steps
+    owner_policy = get_owner_policy(owner_id)
     steps_data = []
+    has_blocked_steps = False
+
     for sp in step_plans:
         d_on = list(getattr(sp, "depends_on", []))
         if not d_on and ("combine" in sp.intent.lower() or "summary" in sp.intent.lower()):
             d_on = [1, 2]
-        steps_data.append({
+
+        # Evaluate candidate step against owner policy
+        allowed, block_reason = evaluate_step_policy(
+            tool=sp.tool,
+            args=sp.args,
+            policy=owner_policy,
+            current_step_index=sp.idx,
+        )
+
+        step_dict = {
             "intent": sp.intent,
             "tool": sp.tool,
             "args": sp.args,
             "probe": sp.probe,
             "depends_on": d_on,
-        })
+            "status": "pending" if allowed else "blocked",
+            "error": block_reason if not allowed else None,
+        }
+        steps_data.append(step_dict)
+        if not allowed:
+            has_blocked_steps = True
 
     steps = Ledger.add_steps(task.id, steps_data)
-    summary = Ledger.get_task_summary(task.id)
+
+    # For any blocked step, create an approval row immediately
+    if has_blocked_steps:
+        for s in steps:
+            if s.status == "blocked":
+                create_approval(
+                    owner_id=owner_id,
+                    task_id=task.id,
+                    step_id=s.id,
+                    tool=s.tool,
+                    args=s.to_dict().get("args", {}),
+                    reason=s.error or "Blocked by owner policy",
+                )
+        Ledger.update_task_status(task.id, "paused")
+
+    summary = Ledger.get_task_summary(task.id, owner_id=owner_id)
 
     return {
-        "task": task.to_dict(),
+        "task": summary["task"],
         "steps": summary["steps"],
     }
 
 
 @app.get("/tasks")
-def list_tasks() -> Dict[str, Any]:
-    tasks = Ledger.list_tasks(limit=50)
+def list_tasks(request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    tasks = Ledger.list_tasks(owner_id=owner_id, limit=50)
     return {"tasks": [t.to_dict() for t in tasks]}
 
 
 @app.get("/tasks/{task_id}")
-def get_task_detail(task_id: str) -> Dict[str, Any]:
-    task = Ledger.get_task(task_id)
+def get_task_detail(task_id: str, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    task = Ledger.get_task(task_id, owner_id=owner_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    summary = Ledger.get_task_summary(task_id)
+    summary = Ledger.get_task_summary(task_id, owner_id=owner_id)
     return summary
 
 
 @app.post("/tasks/{task_id}/run")
-def run_task_endpoint(task_id: str, background_tasks: BackgroundTasks) -> Dict[str, Any]:
-    task = Ledger.get_task(task_id)
+def run_task_endpoint(task_id: str, request: Request, background_tasks: BackgroundTasks) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    task = Ledger.get_task(task_id, owner_id=owner_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    db_path = str(get_db_path())
     Ledger.update_task_status(task_id, "running")
-    threading.Thread(target=run_task, args=(task_id,), daemon=True).start()
+    threading.Thread(target=run_task, args=(task_id, db_path), daemon=True).start()
     return {"status": "running", "task_id": task_id}
 
 
 @app.post("/tasks/{task_id}/resume")
-def resume_task_endpoint(task_id: str, background_tasks: BackgroundTasks) -> Dict[str, Any]:
-    task = Ledger.get_task(task_id)
+def resume_task_endpoint(task_id: str, request: Request, background_tasks: BackgroundTasks) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    task = Ledger.get_task(task_id, owner_id=owner_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    db_path = str(get_db_path())
     Ledger.update_task_status(task_id, "running")
-    threading.Thread(target=resume_task, args=(task_id,), daemon=True).start()
+    threading.Thread(target=resume_task, args=(task_id, None, db_path), daemon=True).start()
     return {"status": "resuming", "task_id": task_id}
 
 
 @app.post("/tasks/{task_id}/sabotage")
-def sabotage_task_endpoint(task_id: str) -> Dict[str, Any]:
+def sabotage_task_endpoint(task_id: str, request: Request) -> Dict[str, Any]:
     if not is_demo_mode():
         raise HTTPException(status_code=403, detail="Sabotage endpoint is disabled when SAHA_DEMO_MODE is false.")
 
-    task = Ledger.get_task(task_id)
+    _, owner_id = get_owner_info(request)
+    task = Ledger.get_task(task_id, owner_id=owner_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    summary = Ledger.get_task_summary(task_id)
+    summary = Ledger.get_task_summary(task_id, owner_id=owner_id)
     target_rel = None
     for s in summary["steps"]:
         if s["tool"] == "write_file":
@@ -185,7 +392,7 @@ def sabotage_task_endpoint(task_id: str) -> Dict[str, Any]:
     if not target_rel:
         target_rel = "facts1.txt"
 
-    target_disk_path = resolve_workspace_path(target_rel, task_id=task_id)
+    target_disk_path = resolve_workspace_path(target_rel, task_id=task_id, owner_id=owner_id)
     existed = target_disk_path.exists()
     if existed:
         target_disk_path.unlink()

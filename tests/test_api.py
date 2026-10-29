@@ -114,8 +114,9 @@ def test_public_mode_goal_limit(client, monkeypatch):
 
 def test_public_mode_ip_rate_limit(client, monkeypatch):
     monkeypatch.setenv("SAHA_PUBLIC_MODE", "true")
-    from backend.api import IP_POST_HISTORY
+    from backend.api import IP_POST_HISTORY, OWNER_POST_HISTORY
     IP_POST_HISTORY.clear()
+    OWNER_POST_HISTORY.clear()
 
     mock_steps = [
         MagicMock(idx=1, intent="Step", tool="write_file", args={"path": "f.txt", "content": "c"}, probe={}, depends_on=[]),
@@ -129,7 +130,7 @@ def test_public_mode_ip_rate_limit(client, monkeypatch):
         # 11th creation must return 429
         res11 = client.post("/tasks", json={"goal": "Goal 11"})
         assert res11.status_code == 429
-        assert "Rate limit exceeded" in res11.json()["detail"]
+        assert "rate limit exceeded" in res11.json()["detail"].lower()
 
 
 def test_sabotage_disabled_when_not_demo(client, monkeypatch):

@@ -44,6 +44,7 @@ def _generate_fast_explanation_worker(
     verified_time: str,
     probe_name: str,
     error_msg: str,
+    owner_id: Optional[str] = None,
     db_path: Optional[str] = None,
 ) -> None:
     """Worker function executed in background thread to generate FAST explanation."""
@@ -64,6 +65,8 @@ def _generate_fast_explanation_worker(
             temperature=0.0,
             max_tokens=150,
             timeout=15.0,
+            owner_id=owner_id,
+            context_tags=["role:fast", f"probe:{probe_name}", f"event:{event_id}"],
             db_path=db_path,
         ).strip()
         explanation = clean_fast_explanation(raw_expl)
@@ -132,7 +135,7 @@ def reconcile_task_reality(task_id: str, db_path: Optional[str] = None) -> Dict[
                 import threading
                 threading.Thread(
                     target=_generate_fast_explanation_worker,
-                    args=(event_id, step.intent, verified_time, probe_name, error_msg, db_path),
+                    args=(event_id, step.intent, verified_time, probe_name, error_msg, task.owner_id, db_path),
                     daemon=True,
                 ).start()
 
@@ -202,6 +205,7 @@ def resume_task(task_id: str, db_path: Optional[str] = None) -> Dict[str, Any]:
         goal=task.goal,
         ledger_steps=[s.to_dict() for s in all_steps],
         drift_report=drift_report,
+        owner_id=task.owner_id,
     )
 
     # Step 4: Append new repair steps to ledger (NEVER DELETE)

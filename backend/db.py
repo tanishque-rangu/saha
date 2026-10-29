@@ -1,9 +1,11 @@
 """Saha Database Module.
 
 SQLite schema, connection management, telemetry, and append-only ledger state.
-Enforces WAL mode, foreign keys, and monotonic audit tracking.
+Enforces WAL mode, foreign keys, monotonic audit tracking, and private owner spaces.
 """
 
+import hashlib
+import json
 import os
 import sqlite3
 import uuid
@@ -18,6 +20,16 @@ DEFAULT_DB_PATH = PROJECT_ROOT / "saha.db"
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def hash_owner_token(token: Optional[str]) -> str:
+    """Derive deterministic SHA-256 hex digest for an owner token."""
+    raw = (token or DEFAULT_ANONYMOUS_TOKEN).strip()
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+DEFAULT_ANONYMOUS_TOKEN = "default-anonymous-owner"
+DEFAULT_OWNER_ID = hash_owner_token(DEFAULT_ANONYMOUS_TOKEN)
 
 
 def get_db_path(custom_path: Optional[str] = None) -> Path:
@@ -59,6 +71,7 @@ def get_db(db_path: Optional[str] = None) -> Generator[sqlite3.Connection, None,
 TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL DEFAULT 'default',
     goal TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('planning', 'running', 'paused', 'complete', 'failed')),
     created_at TEXT NOT NULL,
@@ -75,7 +88,7 @@ CREATE TABLE IF NOT EXISTS steps (
     args_json TEXT NOT NULL DEFAULT '{}',
     result_json TEXT,
     probe_json TEXT,
-    status TEXT NOT NULL CHECK(status IN ('pending', 'running', 'done', 'verified', 'drifted', 'superseded', 'failed')),
+    status TEXT NOT NULL CHECK(status IN ('pending', 'running', 'done', 'verified', 'drifted', 'superseded', 'failed', 'blocked')),
     drift_reason TEXT,
     superseded_by TEXT REFERENCES steps(id),
     resolved_by TEXT REFERENCES steps(id),
@@ -95,10 +108,34 @@ CREATE TABLE IF NOT EXISTS drift_events (
     detected_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS policies (
+    owner_id TEXT PRIMARY KEY,
+    policy_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS approvals (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    step_id TEXT NOT NULL REFERENCES steps(id) ON DELETE CASCADE,
+    tool TEXT NOT NULL,
+    args_json TEXT NOT NULL DEFAULT '{}',
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'denied')),
+    created_at TEXT NOT NULL,
+    resolved_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS llm_calls (
     id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL DEFAULT 'default',
     model TEXT NOT NULL,
     role TEXT,
+    context_tags TEXT DEFAULT '[]',
+    input_chars INTEGER DEFAULT 0,
+    output_chars INTEGER DEFAULT 0,
+    redaction_count INTEGER DEFAULT 0,
     latency_ms REAL NOT NULL,
     prompt_tokens INTEGER DEFAULT 0,
     completion_tokens INTEGER DEFAULT 0,
@@ -110,12 +147,14 @@ CREATE TABLE IF NOT EXISTS llm_calls (
 """
 
 INDEXES_SQL = """
+CREATE INDEX IF NOT EXISTS idx_tasks_owner ON tasks(owner_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_steps_task_seq ON steps(task_id, seq);
 CREATE INDEX IF NOT EXISTS idx_steps_status ON steps(task_id, status);
-CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_drift_events_task ON drift_events(task_id);
+CREATE INDEX IF NOT EXISTS idx_approvals_owner ON approvals(owner_id, status);
+CREATE INDEX IF NOT EXISTS idx_llm_calls_owner ON llm_calls(owner_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_model ON llm_calls(model);
-CREATE INDEX IF NOT EXISTS idx_llm_calls_created ON llm_calls(created_at);
 """
 
 
@@ -124,43 +163,117 @@ def init_db(db_path: Optional[str] = None) -> None:
     with get_db(db_path) as conn:
         conn.executescript(TABLES_SQL)
 
-        # Migrate existing steps table columns if missing
-        cols = {row["name"] for row in conn.execute("PRAGMA table_info(steps)").fetchall()}
-        if "seq" not in cols:
+        # 1. Migrate tasks table columns if missing
+        task_cols = {row["name"] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
+        if "owner_id" not in task_cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'default';")
+
+        # 2. Migrate steps table columns if missing
+        step_cols = {row["name"] for row in conn.execute("PRAGMA table_info(steps)").fetchall()}
+        if "seq" not in step_cols:
             conn.execute("ALTER TABLE steps ADD COLUMN seq INTEGER NOT NULL DEFAULT 0;")
-        if "drift_reason" not in cols:
+        if "drift_reason" not in step_cols:
             conn.execute("ALTER TABLE steps ADD COLUMN drift_reason TEXT;")
-        if "superseded_by" not in cols:
+        if "superseded_by" not in step_cols:
             conn.execute("ALTER TABLE steps ADD COLUMN superseded_by TEXT REFERENCES steps(id);")
-        if "resolved_by" not in cols:
+        if "resolved_by" not in step_cols:
             conn.execute("ALTER TABLE steps ADD COLUMN resolved_by TEXT REFERENCES steps(id);")
-        if "depends_on_json" not in cols:
+        if "depends_on_json" not in step_cols:
             conn.execute("ALTER TABLE steps ADD COLUMN depends_on_json TEXT NOT NULL DEFAULT '[]';")
+
+        # 3. Check if steps table CHECK constraint includes 'blocked'
+        r = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='steps'").fetchone()
+        if r and r[0] and "'blocked'" not in r[0]:
+            conn.execute("PRAGMA foreign_keys = OFF;")
+            conn.execute("ALTER TABLE steps RENAME TO steps_old;")
+            conn.execute("""
+            CREATE TABLE steps (
+                id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                idx INTEGER NOT NULL,
+                seq INTEGER NOT NULL DEFAULT 0,
+                intent TEXT NOT NULL,
+                tool TEXT NOT NULL,
+                args_json TEXT NOT NULL DEFAULT '{}',
+                result_json TEXT,
+                probe_json TEXT,
+                status TEXT NOT NULL CHECK(status IN ('pending', 'running', 'done', 'verified', 'drifted', 'superseded', 'failed', 'blocked')),
+                drift_reason TEXT,
+                superseded_by TEXT REFERENCES steps(id),
+                resolved_by TEXT REFERENCES steps(id),
+                depends_on_json TEXT NOT NULL DEFAULT '[]',
+                error TEXT,
+                started_at TEXT,
+                finished_at TEXT
+            );
+            """)
+            old_cols = [row["name"] for row in conn.execute("PRAGMA table_info(steps_old)").fetchall()]
+            common_cols = ", ".join(old_cols)
+            conn.execute(f"INSERT INTO steps ({common_cols}) SELECT {common_cols} FROM steps_old;")
+            conn.execute("DROP TABLE steps_old;")
+            conn.execute("PRAGMA foreign_keys = ON;")
+
+        # 4. Migrate llm_calls table columns if missing
+        llm_cols = {row["name"] for row in conn.execute("PRAGMA table_info(llm_calls)").fetchall()}
+        if "owner_id" not in llm_cols:
+            conn.execute("ALTER TABLE llm_calls ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'default';")
+        if "context_tags" not in llm_cols:
+            conn.execute("ALTER TABLE llm_calls ADD COLUMN context_tags TEXT DEFAULT '[]';")
+        if "input_chars" not in llm_cols:
+            conn.execute("ALTER TABLE llm_calls ADD COLUMN input_chars INTEGER DEFAULT 0;")
+        if "output_chars" not in llm_cols:
+            conn.execute("ALTER TABLE llm_calls ADD COLUMN output_chars INTEGER DEFAULT 0;")
+        if "redaction_count" not in llm_cols:
+            conn.execute("ALTER TABLE llm_calls ADD COLUMN redaction_count INTEGER DEFAULT 0;")
 
         conn.executescript(INDEXES_SQL)
 
 
-def check_daily_llm_limit(db_path: Optional[str] = None) -> None:
-    """Check if daily LLM call cap has been exceeded in the last 24 hours."""
-    cap_str = os.getenv("SAHA_DAILY_LLM_CALL_CAP", "500")
+def check_daily_llm_limit(owner_id: Optional[str] = None, db_path: Optional[str] = None) -> None:
+    """Check if daily LLM call cap has been exceeded per-owner or globally in the last 24 hours."""
+    global_cap_str = os.getenv("SAHA_DAILY_LLM_CALL_CAP", "500")
     try:
-        cap = int(cap_str)
+        global_cap = int(global_cap_str)
     except ValueError:
-        cap = 500
+        global_cap = 500
+
+    owner_cap_str = os.getenv("SAHA_OWNER_DAILY_LLM_CAP", "100")
+    try:
+        owner_cap = int(owner_cap_str)
+    except ValueError:
+        owner_cap = 100
+
+    effective_owner = owner_id or "default"
 
     init_db(db_path)
     with get_db(db_path) as conn:
-        row = conn.execute(
+        # Check per-owner cap
+        row_owner = conn.execute(
+            """
+            SELECT COUNT(*) as cnt
+            FROM llm_calls
+            WHERE owner_id = ? AND created_at >= datetime('now', '-24 hours')
+            """,
+            (effective_owner,),
+        ).fetchone()
+        owner_cnt = row_owner["cnt"] if row_owner else 0
+        if owner_cnt >= owner_cap:
+            raise RuntimeError(
+                f"Owner daily LLM call cap of {owner_cap} calls exceeded (429: Rate limit exceeded). Current usage: {owner_cnt}"
+            )
+
+        # Check global cap
+        row_global = conn.execute(
             """
             SELECT COUNT(*) as cnt
             FROM llm_calls
             WHERE created_at >= datetime('now', '-24 hours')
             """
         ).fetchone()
-        cnt = row["cnt"] if row else 0
-        if cnt >= cap:
+        global_cnt = row_global["cnt"] if row_global else 0
+        if global_cnt >= global_cap:
             raise RuntimeError(
-                f"Daily LLM call cap of {cap} calls exceeded (429: Rate limit exceeded). Current usage: {cnt}"
+                f"Global daily LLM call cap of {global_cap} calls exceeded (429: Rate limit exceeded). Current usage: {global_cnt}"
             )
 
 
@@ -168,6 +281,11 @@ def record_llm_call(
     model: str,
     latency_ms: float,
     role: Optional[str] = None,
+    owner_id: Optional[str] = None,
+    context_tags: Optional[List[str]] = None,
+    input_chars: int = 0,
+    output_chars: int = 0,
+    redaction_count: int = 0,
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
     total_tokens: int = 0,
@@ -175,20 +293,31 @@ def record_llm_call(
     error: Optional[str] = None,
     db_path: Optional[str] = None,
 ) -> str:
-    """Record LLM call telemetry into SQLite."""
+    """Record LLM call telemetry and privacy ledger metadata into SQLite."""
     init_db(db_path)
     call_id = str(uuid.uuid4())
     now = utc_now_iso()
+    tags_json = json.dumps(context_tags or [])
+    effective_owner = owner_id or "default"
     with get_db(db_path) as conn:
         conn.execute(
             """
-            INSERT INTO llm_calls (id, model, role, latency_ms, prompt_tokens, completion_tokens, total_tokens, status, error, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO llm_calls (
+                id, owner_id, model, role, context_tags, input_chars, output_chars,
+                redaction_count, latency_ms, prompt_tokens, completion_tokens,
+                total_tokens, status, error, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 call_id,
+                effective_owner,
                 model,
                 role or "unknown",
+                tags_json,
+                int(input_chars or 0),
+                int(output_chars or 0),
+                int(redaction_count or 0),
                 float(latency_ms),
                 int(prompt_tokens or 0),
                 int(completion_tokens or 0),
@@ -201,12 +330,18 @@ def record_llm_call(
     return call_id
 
 
-def get_llm_metrics(db_path: Optional[str] = None) -> Dict[str, Any]:
+def get_llm_metrics(owner_id: Optional[str] = None, db_path: Optional[str] = None) -> Dict[str, Any]:
     """Calculate average latency and token usage grouped by model and role."""
     init_db(db_path)
     with get_db(db_path) as conn:
+        where_clause = "WHERE status = 'success'"
+        params: List[Any] = []
+        if owner_id:
+            where_clause += " AND owner_id = ?"
+            params.append(owner_id)
+
         rows = conn.execute(
-            """
+            f"""
             SELECT
                 model,
                 role,
@@ -216,10 +351,11 @@ def get_llm_metrics(db_path: Optional[str] = None) -> Dict[str, Any]:
                 SUM(completion_tokens) as total_completion_tokens,
                 SUM(total_tokens) as total_tokens
             FROM llm_calls
-            WHERE status = 'success'
+            {where_clause}
             GROUP BY model, role
             ORDER BY call_count DESC
-            """
+            """,
+            params,
         ).fetchall()
         models_data = []
         for r in rows:
@@ -232,8 +368,73 @@ def get_llm_metrics(db_path: Optional[str] = None) -> Dict[str, Any]:
                 "total_completion_tokens": r["total_completion_tokens"] or 0,
                 "total_tokens": r["total_tokens"] or 0,
             })
-        total_calls = conn.execute("SELECT COUNT(*) as cnt FROM llm_calls").fetchone()["cnt"]
+        cnt_query = "SELECT COUNT(*) as cnt FROM llm_calls"
+        if owner_id:
+            total_calls = conn.execute(f"{cnt_query} WHERE owner_id = ?", (owner_id,)).fetchone()["cnt"]
+        else:
+            total_calls = conn.execute(cnt_query).fetchone()["cnt"]
         return {
             "total_calls": total_calls,
             "models": models_data,
         }
+
+
+def get_owner_egress_logs(owner_id: str, limit: int = 100, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Return owner's privacy ledger egress logs with character and redaction counts (NO content)."""
+    init_db(db_path)
+    with get_db(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT id, owner_id, model, role, context_tags, input_chars, output_chars,
+                   redaction_count, latency_ms, total_tokens, status, error, created_at
+            FROM llm_calls
+            WHERE owner_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (owner_id, limit),
+        ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "owner_id": r["owner_id"],
+                "model": r["model"],
+                "role": r["role"],
+                "tags": json.loads(r["context_tags"]) if r["context_tags"] else [],
+                "input_chars": r["input_chars"],
+                "output_chars": r["output_chars"],
+                "redaction_count": r["redaction_count"],
+                "latency_ms": r["latency_ms"],
+                "total_tokens": r["total_tokens"],
+                "status": r["status"],
+                "error": r["error"],
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+
+
+def delete_owner_space(owner_id: str, db_path: Optional[str] = None) -> Dict[str, Any]:
+    """Delete all database records associated with an owner."""
+    init_db(db_path)
+    with get_db(db_path) as conn:
+        task_rows = conn.execute("SELECT id FROM tasks WHERE owner_id = ?", (owner_id,)).fetchall()
+        deleted_tasks = len(task_rows)
+        conn.execute("DELETE FROM tasks WHERE owner_id = ?", (owner_id,))
+        conn.execute("DELETE FROM approvals WHERE owner_id = ?", (owner_id,))
+        conn.execute("DELETE FROM policies WHERE owner_id = ?", (owner_id,))
+        conn.execute("DELETE FROM llm_calls WHERE owner_id = ?", (owner_id,))
+    return {"deleted_tasks": deleted_tasks}
+
+
+def get_task_owner_id(task_id: str, db_path: Optional[str] = None) -> Optional[str]:
+    """Look up owner_id for a given task ID."""
+    try:
+        init_db(db_path)
+        with get_db(db_path) as conn:
+            r = conn.execute("SELECT owner_id FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            if r and "owner_id" in r.keys():
+                return r["owner_id"]
+    except Exception:
+        pass
+    return None

@@ -30,6 +30,7 @@ from dotenv import load_dotenv
 from openai import APIConnectionError, APIError, APITimeoutError, NotFoundError, OpenAI, RateLimitError
 
 from backend.db import check_daily_llm_limit, record_llm_call
+from backend.redaction import redact_messages
 
 # Safely inject truststore if available to verify SSL against Windows root certificates
 try:
@@ -123,23 +124,29 @@ def call_llm(
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
     stop: Optional[Union[str, List[str]]] = None,
     timeout: Optional[float] = None,
+    owner_id: Optional[str] = None,
+    context_tags: Optional[List[str]] = None,
     db_path: Optional[str] = None,
 ) -> str:
     """Execute a single LLM call through Nebius Token Factory with 1 retry.
     
     Returns ONLY `content` as a string (never reasoning_content).
-    Records model, latency, and token usage into the llm_calls table.
+    Applies redaction pass before dispatching to external API.
+    Records model, latency, context tags, character counts, and token usage into llm_calls table.
     Enforces strict fail-loud error reporting if a model ID is not found.
     """
     effective_role = role or get_model_role(model)
-    check_daily_llm_limit(db_path=db_path)
+    check_daily_llm_limit(owner_id=owner_id, db_path=db_path)
     client = get_client()
     tokens_to_request = max_tokens or get_default_max_tokens(effective_role)
     request_timeout = timeout or DEFAULT_TIMEOUT
 
+    # Redaction pass
+    clean_messages, input_chars, redaction_count = redact_messages(messages)
+
     kwargs: Dict[str, Any] = {
         "model": model,
-        "messages": messages,
+        "messages": clean_messages,
         "temperature": temperature,
         "max_tokens": tokens_to_request,
         "timeout": request_timeout,
@@ -174,9 +181,22 @@ def call_llm(
             c_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
             t_tokens = getattr(usage, "total_tokens", 0) if usage else 0
 
+            # Return ONLY content
+            choice = response.choices[0]
+            msg = choice.message
+            content = msg.content or ""
+            if not content and hasattr(msg, "reasoning") and msg.reasoning:
+                content = msg.reasoning
+            result_str = content.strip()
+
             record_llm_call(
                 model=model,
                 role=effective_role,
+                owner_id=owner_id,
+                context_tags=context_tags,
+                input_chars=input_chars,
+                output_chars=len(result_str),
+                redaction_count=redaction_count,
                 latency_ms=latency_ms,
                 prompt_tokens=p_tokens,
                 completion_tokens=c_tokens,
@@ -185,14 +205,7 @@ def call_llm(
                 db_path=db_path,
             )
 
-            # Return ONLY content
-            choice = response.choices[0]
-            msg = choice.message
-            content = msg.content or ""
-            # In cases where reasoning_effort='none' placed text in reasoning or content is empty
-            if not content and hasattr(msg, "reasoning") and msg.reasoning:
-                content = msg.reasoning
-            return content.strip()
+            return result_str
 
         except NotFoundError as e:
             t_end = time.perf_counter()
@@ -200,6 +213,11 @@ def call_llm(
             record_llm_call(
                 model=model,
                 role=effective_role,
+                owner_id=owner_id,
+                context_tags=context_tags,
+                input_chars=input_chars,
+                output_chars=0,
+                redaction_count=redaction_count,
                 latency_ms=latency_ms,
                 status="error",
                 error=f"Model not found: {e}",
@@ -221,6 +239,11 @@ def call_llm(
             record_llm_call(
                 model=model,
                 role=effective_role,
+                owner_id=owner_id,
+                context_tags=context_tags,
+                input_chars=input_chars,
+                output_chars=0,
+                redaction_count=redaction_count,
                 latency_ms=latency_ms,
                 status="error",
                 error=f"Transient failure after {attempts} attempts: {e}",
@@ -258,6 +281,8 @@ def call_llm_json(
     temperature: float = 0.0,
     max_tokens: Optional[int] = None,
     max_retries: int = 1,
+    owner_id: Optional[str] = None,
+    context_tags: Optional[List[str]] = None,
     db_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Call LLM and parse strictly formatted JSON output.
@@ -285,6 +310,8 @@ def call_llm_json(
             role=role,
             temperature=temperature,
             max_tokens=max_tokens,
+            owner_id=owner_id,
+            context_tags=context_tags,
             db_path=db_path,
         )
 

@@ -28,18 +28,36 @@ def is_unc_path(path_str: str) -> bool:
     return s.startswith(r"\\") or s.startswith("//")
 
 
-def get_workspace_dir(task_id: Optional[str] = None) -> Path:
-    """Return the absolute path to workspace/<task_id> or workspace/."""
+def get_workspace_dir(task_id: Optional[str] = None, owner_id: Optional[str] = None) -> Path:
+    """Return the absolute path to workspace/<owner_id>/<task_id> or workspace/<owner_id> or workspace/."""
+    from backend.db import get_task_owner_id
+
     base = get_base_workspace()
-    if task_id:
-        # Sanitize task_id to prevent traversal
-        safe_tid = re.sub(r"[^a-zA-Z0-9_\-]", "", str(task_id))
-        ws = (base / safe_tid).resolve()
-    else:
+    if not task_id and not owner_id:
         ws = base
+    elif not task_id and owner_id:
+        safe_oid = re.sub(r"[^a-zA-Z0-9_\-]", "", str(owner_id))
+        ws = (base / safe_oid).resolve()
+    else:
+        # task_id is present
+        safe_tid = re.sub(r"[^a-zA-Z0-9_\-]", "", str(task_id))
+        effective_owner = owner_id or get_task_owner_id(task_id) or "default"
+        safe_oid = re.sub(r"[^a-zA-Z0-9_\-]", "", str(effective_owner))
+        ws = (base / safe_oid / safe_tid).resolve()
 
     ws.mkdir(parents=True, exist_ok=True)
     return ws
+
+
+def delete_owner_workspace(owner_id: str) -> None:
+    """Delete all files and directories in workspace/<owner_id>/."""
+    import shutil
+
+    base = get_base_workspace()
+    safe_oid = re.sub(r"[^a-zA-Z0-9_\-]", "", str(owner_id))
+    owner_ws = (base / safe_oid).resolve()
+    if owner_ws.exists() and owner_ws.is_relative_to(base) and owner_ws != base:
+        shutil.rmtree(owner_ws, ignore_errors=True)
 
 
 def is_reparse_or_symlink(path: Path) -> bool:
@@ -62,8 +80,8 @@ def is_reparse_or_symlink(path: Path) -> bool:
     return False
 
 
-def resolve_workspace_path(path: str, task_id: Optional[str] = None) -> Path:
-    """Resolve and validate that a path is strictly inside workspace/<task_id>/.
+def resolve_workspace_path(path: str, task_id: Optional[str] = None, owner_id: Optional[str] = None) -> Path:
+    """Resolve and validate that a path is strictly inside workspace/<owner_id>/<task_id>/.
     
     Rejects:
     - Empty paths
@@ -88,7 +106,7 @@ def resolve_workspace_path(path: str, task_id: Optional[str] = None) -> Path:
     if ".." in parts:
         raise PermissionError(f"Path traversal '..' is strictly forbidden: '{path_str}'")
 
-    ws = get_workspace_dir(task_id)
+    ws = get_workspace_dir(task_id, owner_id=owner_id)
     p = Path(path_str)
 
     if p.is_absolute():

@@ -13,9 +13,10 @@ import json
 import os
 from typing import Any, Dict, Optional
 
-from backend.db import get_db
+from backend.db import get_db, get_task_owner_id
 from backend.ledger import Ledger, Step, Task
 from backend.llm import WORKER_MODEL, call_llm
+from backend.policy import create_approval, evaluate_step_policy, get_owner_policy
 from backend.tools import http_get, read_file, run_shell, write_file
 from backend.verifiers import verify_step
 
@@ -45,8 +46,8 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
     if not step:
         raise ValueError(f"Step {step_id} not found")
 
-    # RULE 1: Log running BEFORE executing
-    step = Ledger.mark_step_running(step_id, db_path=db_path)
+    task_id = step.task_id
+    owner_id = get_task_owner_id(task_id, db_path=db_path) or "default"
 
     # Parse arguments and probe spec
     try:
@@ -59,7 +60,29 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
     except Exception:
         probe_spec = {}
 
-    task_id = step.task_id
+    # Policy Check BEFORE running or tool execution
+    policy = get_owner_policy(owner_id, db_path=db_path)
+    allowed, block_reason = evaluate_step_policy(
+        tool=step.tool,
+        args=args,
+        policy=policy,
+        current_step_index=step.idx,
+    )
+    if not allowed:
+        reason_msg = block_reason or "Blocked by owner policy"
+        create_approval(
+            owner_id=owner_id,
+            task_id=task_id,
+            step_id=step.id,
+            tool=step.tool,
+            args=args,
+            reason=reason_msg,
+            db_path=db_path,
+        )
+        return Ledger.mark_step_blocked(step.id, reason=reason_msg, db_path=db_path)
+
+    # RULE 1: Log running BEFORE executing
+    step = Ledger.mark_step_running(step_id, db_path=db_path)
 
     # Execute tool with WORKER model integration
     try:
@@ -81,6 +104,8 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
                     messages=[{"role": "user", "content": worker_prompt}],
                     role="worker",
                     temperature=0.0,
+                    owner_id=owner_id,
+                    context_tags=["role:worker", "tool:write_file", f"task:{task_id}"],
                     db_path=db_path,
                 )
                 actual_content = generated_content.strip()
@@ -129,6 +154,8 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
                 messages=[{"role": "user", "content": worker_prompt}],
                 role="worker",
                 temperature=0.0,
+                owner_id=owner_id,
+                context_tags=["role:worker", "tool:run_shell", f"task:{task_id}"],
                 db_path=db_path,
             )
             result = {
@@ -225,7 +252,10 @@ def run_task(task_id: str, db_path: Optional[str] = None) -> Task:
 
             current_step = pending_steps[0]
             executed = execute_step(current_step.id, db_path=db_path)
-            if executed.status != "verified":
+            if executed.status == "blocked":
+                Ledger.update_task_status(task_id, "paused", db_path=db_path)
+                return Ledger.get_task(task_id, db_path=db_path)
+            elif executed.status != "verified":
                 Ledger.update_task_status(task_id, "failed", db_path=db_path)
                 return Ledger.get_task(task_id, db_path=db_path)
 

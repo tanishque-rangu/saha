@@ -1,0 +1,278 @@
+"""Saha Policy & Approvals Engine.
+
+Enforces per-owner security boundaries in pure deterministic code (never LLM):
+- allowed_tools (list of permitted tool names)
+- allowed_domains (list of permitted HTTP domains)
+- allowed_paths (list of permitted paths relative to workspace/<owner>/<task>)
+- auto_heal (boolean flag for automated drift remediation)
+- max_steps (maximum steps allowed per task plan)
+
+Any violation halts step execution, transitions step to `blocked`, and logs an approval request.
+"""
+
+import json
+import os
+import urllib.parse
+import uuid
+from typing import Any, Dict, List, Optional, Tuple
+
+from pydantic import BaseModel, Field
+
+from backend.db import get_db, init_db, utc_now_iso
+
+
+class Policy(BaseModel):
+    allowed_tools: List[str] = Field(
+        default_factory=lambda: ["write_file", "read_file", "http_get"],
+        description="List of permitted tool names for execution.",
+    )
+    allowed_domains: List[str] = Field(
+        default_factory=lambda: ["example.com", "wikipedia.org", "httpbin.org"],
+        description="List of permitted external domains for http_get.",
+    )
+    allowed_paths: List[str] = Field(
+        default_factory=lambda: ["*"],
+        description="Permitted path prefixes/patterns relative to task workspace.",
+    )
+    auto_heal: bool = Field(
+        default=True,
+        description="Whether autonomous drift repair is permitted.",
+    )
+    max_steps: int = Field(
+        default=10,
+        description="Maximum number of steps permitted in a single task DAG.",
+    )
+
+
+def get_default_policy() -> Policy:
+    """Return default policy with sensible public-mode defaults."""
+    return Policy()
+
+
+def get_owner_policy(owner_id: str, db_path: Optional[str] = None) -> Policy:
+    """Retrieve owner policy from database, or initialize with defaults."""
+    init_db(db_path)
+    with get_db(db_path) as conn:
+        row = conn.execute("SELECT policy_json FROM policies WHERE owner_id = ?", (owner_id,)).fetchone()
+        if row and row["policy_json"]:
+            try:
+                data = json.loads(row["policy_json"])
+                return Policy(**data)
+            except Exception:
+                pass
+
+        default_policy = get_default_policy()
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO policies (owner_id, policy_json, updated_at)
+            VALUES (?, ?, ?)
+            """,
+            (owner_id, default_policy.model_dump_json(), utc_now_iso()),
+        )
+        return default_policy
+
+
+def set_owner_policy(owner_id: str, policy: Policy, db_path: Optional[str] = None) -> Policy:
+    """Save or update an owner's policy in SQLite."""
+    init_db(db_path)
+    with get_db(db_path) as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO policies (owner_id, policy_json, updated_at)
+            VALUES (?, ?, ?)
+            """,
+            (owner_id, policy.model_dump_json(), utc_now_iso()),
+        )
+    return policy
+
+
+def evaluate_step_policy(
+    tool: str,
+    args: Dict[str, Any],
+    policy: Policy,
+    current_step_index: int = 1,
+) -> Tuple[bool, Optional[str]]:
+    """Evaluate a step candidate against policy.
+    
+    Returns (True, None) if allowed, or (False, reason) if blocked.
+    Deterministic code enforcement only.
+    """
+    # 1. Step count check
+    if current_step_index > policy.max_steps:
+        return False, f"Step count ({current_step_index}) exceeds policy max_steps ({policy.max_steps})."
+
+    # 2. Tool permission check
+    if tool not in policy.allowed_tools:
+        return False, f"Tool '{tool}' is not permitted by owner policy. Allowed tools: {policy.allowed_tools}."
+
+    # 3. HTTP domain permission check
+    if tool == "http_get":
+        url = args.get("url", "")
+        if not url:
+            return False, "Missing 'url' argument for http_get."
+        try:
+            parsed = urllib.parse.urlparse(url)
+            host = (parsed.hostname or "").lower()
+            if not host:
+                return False, f"Invalid URL hostname: {url}."
+
+            domain_allowed = False
+            for allowed in policy.allowed_domains:
+                allowed_clean = allowed.lower().strip()
+                if host == allowed_clean or host.endswith("." + allowed_clean):
+                    domain_allowed = True
+                    break
+
+            if not domain_allowed:
+                return False, f"Domain '{host}' is not in policy allowed_domains: {policy.allowed_domains}."
+        except Exception as e:
+            return False, f"Failed to parse URL for policy check: {e}."
+
+    # 4. File path permission check
+    if tool in ("write_file", "read_file"):
+        path = args.get("path", "")
+        if not path:
+            return False, f"Missing 'path' argument for {tool}."
+        # If wildcard not present, check explicit allowed paths
+        if "*" not in policy.allowed_paths:
+            path_clean = path.replace("\\", "/").strip("/")
+            if not any(path_clean == p.strip("/") or path_clean.startswith(p.strip("/") + "/") for p in policy.allowed_paths):
+                return False, f"Path '{path}' is not in policy allowed_paths: {policy.allowed_paths}."
+
+    return True, None
+
+
+def create_approval(
+    owner_id: str,
+    task_id: str,
+    step_id: str,
+    tool: str,
+    args: Dict[str, Any],
+    reason: str,
+    db_path: Optional[str] = None,
+) -> str:
+    """Create a pending approval row in SQLite."""
+    init_db(db_path)
+    approval_id = str(uuid.uuid4())
+    now = utc_now_iso()
+    args_json = json.dumps(args)
+    with get_db(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO approvals (id, owner_id, task_id, step_id, tool, args_json, reason, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+            """,
+            (approval_id, owner_id, task_id, step_id, tool, args_json, reason, now),
+        )
+    return approval_id
+
+
+def get_owner_approvals(owner_id: str, status: Optional[str] = None, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Return approvals for an owner, optionally filtered by status."""
+    init_db(db_path)
+    with get_db(db_path) as conn:
+        query = "SELECT * FROM approvals WHERE owner_id = ?"
+        params: List[Any] = [owner_id]
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        query += " ORDER BY created_at DESC"
+        rows = conn.execute(query, params).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "owner_id": r["owner_id"],
+                "task_id": r["task_id"],
+                "step_id": r["step_id"],
+                "tool": r["tool"],
+                "args": json.loads(r["args_json"]) if r["args_json"] else {},
+                "reason": r["reason"],
+                "status": r["status"],
+                "created_at": r["created_at"],
+                "resolved_at": r["resolved_at"],
+            }
+            for r in rows
+        ]
+
+
+def approve_request(
+    approval_id: str,
+    owner_id: str,
+    always_allow: bool = False,
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Approve a blocked step request, re-queue the step to 'pending', and optionally update policy."""
+    init_db(db_path)
+    now = utc_now_iso()
+    with get_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM approvals WHERE id = ? AND owner_id = ?",
+            (approval_id, owner_id),
+        ).fetchone()
+        if not row:
+            raise ValueError("Approval not found")
+
+        step_id = row["step_id"]
+        tool = row["tool"]
+        args = json.loads(row["args_json"]) if row["args_json"] else {}
+
+        # 1. Update approval status
+        conn.execute(
+            "UPDATE approvals SET status = 'approved', resolved_at = ? WHERE id = ?",
+            (now, approval_id),
+        )
+
+        # 2. Re-queue step to pending
+        conn.execute(
+            "UPDATE steps SET status = 'pending', error = NULL WHERE id = ?",
+            (step_id,),
+        )
+
+    # 3. Always Allow: update owner's policy
+    if always_allow:
+        policy = get_owner_policy(owner_id, db_path=db_path)
+        if tool not in policy.allowed_tools:
+            policy.allowed_tools.append(tool)
+        if tool == "http_get" and args.get("url"):
+            try:
+                host = urllib.parse.urlparse(args["url"]).hostname
+                if host and host not in policy.allowed_domains:
+                    policy.allowed_domains.append(host)
+            except Exception:
+                pass
+        set_owner_policy(owner_id, policy, db_path=db_path)
+
+    return {"status": "approved", "approval_id": approval_id, "step_id": step_id, "always_allow": always_allow}
+
+
+def deny_request(
+    approval_id: str,
+    owner_id: str,
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Deny a blocked step request and mark the step failed."""
+    init_db(db_path)
+    now = utc_now_iso()
+    with get_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM approvals WHERE id = ? AND owner_id = ?",
+            (approval_id, owner_id),
+        ).fetchone()
+        if not row:
+            raise ValueError("Approval not found")
+
+        step_id = row["step_id"]
+
+        # 1. Update approval status
+        conn.execute(
+            "UPDATE approvals SET status = 'denied', resolved_at = ? WHERE id = ?",
+            (now, approval_id),
+        )
+
+        # 2. Mark step failed
+        conn.execute(
+            "UPDATE steps SET status = 'failed', error = 'Denied by owner policy approval' WHERE id = ?",
+            (step_id,),
+        )
+
+    return {"status": "denied", "approval_id": approval_id, "step_id": step_id}

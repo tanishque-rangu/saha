@@ -45,7 +45,7 @@
       color: #f3f4f6;
     }
     .glass-panel {
-      background: rgba(17, 24, 39, 0.7);
+      background: rgba(17, 24, 39, 0.75);
       backdrop-filter: blur(12px);
       border: 1px solid rgba(55, 65, 81, 0.5);
     }
@@ -60,9 +60,9 @@
 <body class="min-h-screen flex flex-col font-sans selection:bg-emerald-500 selection:text-black overflow-x-hidden">
 
   <!-- Header -->
-  <header class="border-b border-gray-800 bg-gray-950/80 backdrop-blur sticky top-0 z-50">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-      <div class="w-full min-w-0">
+  <header class="border-b border-gray-800 bg-gray-950/80 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
+      <div class="w-full lg:w-auto min-w-0">
         <div class="flex flex-wrap items-center gap-2 sm:gap-3">
           <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-300 flex items-center justify-center font-display font-bold text-black text-xl shadow-lg shadow-emerald-500/20">
             S
@@ -70,18 +70,40 @@
           <span class="font-display font-bold text-2xl tracking-tight text-white">Saha</span>
           <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Persistent AI</span>
           <span id="demoBadge" class="hidden px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30">Demo Mode</span>
+          <span id="ownerBadge" class="px-2 py-0.5 text-[11px] font-mono rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/30" title="Your isolated private space bearer token">Space: --</span>
         </div>
-        <p class="text-xs sm:text-sm text-gray-400 mt-1 font-medium" style="word-break: break-word; overflow-wrap: break-word; white-space: normal;">
+        <p class="text-xs sm:text-sm text-gray-400 mt-1 font-medium break-words">
           <span class="text-emerald-400 font-semibold">Tagline:</span> Your work should never have to start over just because your AI does.
         </p>
       </div>
 
-      <div class="flex items-center gap-4 text-xs">
-        <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-900 border border-gray-800 text-gray-300">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span id="systemStatus">Ledger Active</span>
-        </div>
-        <button onclick="refreshData()" class="p-2 text-gray-400 hover:text-white transition" title="Refresh">
+      <!-- Action & Controls Bar -->
+      <div class="flex flex-wrap items-center gap-2 sm:gap-3 text-xs w-full lg:w-auto justify-start lg:justify-end">
+        <!-- Approvals Pill -->
+        <button id="approvalsNavBtn" onclick="openApprovalsModal()" class="px-3 py-1.5 rounded-lg bg-gray-900 border border-gray-800 hover:border-gray-700 text-gray-300 hover:text-white transition flex items-center gap-1.5 font-medium">
+          <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          Approvals
+          <span id="pendingApprovalsCount" class="hidden px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-black">0</span>
+        </button>
+
+        <!-- Privacy Egress Pill -->
+        <button onclick="openEgressModal()" class="px-3 py-1.5 rounded-lg bg-gray-900 border border-gray-800 hover:border-gray-700 text-gray-300 hover:text-white transition flex items-center gap-1.5 font-medium" title="Privacy ledger: Zero raw content stored">
+          <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+          Privacy Ledger
+        </button>
+
+        <!-- Pair Link Button -->
+        <button onclick="openPairModal()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+          Pair Device
+        </button>
+
+        <!-- Delete Space Button -->
+        <button onclick="confirmDeleteSpace()" class="px-2.5 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 border border-rose-900/60 text-rose-300 font-medium transition" title="Wipe all tasks, files, and policy data for this private space">
+          Reset Space
+        </button>
+
+        <button onclick="refreshData()" class="p-2 text-gray-400 hover:text-white transition ml-1" title="Refresh">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
         </button>
       </div>
@@ -152,7 +174,7 @@
 
             <!-- Task Actions -->
             <div class="flex flex-wrap items-center gap-2">
-              <button id="runTaskBtn" onclick="runActiveTask()" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5">
+              <button id="runTaskBtn" onclick="runActiveTask()" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-md">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 Run Task
               </button>
@@ -160,7 +182,7 @@
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                 Simulate Drift
               </button>
-              <button id="resumeBtn" onclick="resumeActiveTask()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5">
+              <button id="resumeBtn" onclick="resumeActiveTask()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-md">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Resume & Reconcile
               </button>
@@ -181,6 +203,22 @@
               <p id="driftExplanation" class="text-amber-200 text-sm font-medium italic">--</p>
               <div id="driftDetails" class="text-gray-400 font-mono text-[11px] pt-1 border-t border-gray-800">--</div>
             </div>
+          </div>
+
+          <!-- Policy Blocked Alert (if any steps are blocked) -->
+          <div id="policyBlockedAlert" class="hidden rounded-xl border border-purple-500/50 bg-purple-950/30 p-4 space-y-2">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2 text-purple-300 font-bold text-sm">
+                <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                <span>EXECUTION PAUSED: ACTION BLOCKED BY POLICY</span>
+              </div>
+              <button onclick="openApprovalsModal()" class="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-semibold transition">
+                Review & Approve
+              </button>
+            </div>
+            <p class="text-xs text-purple-200">
+              One or more steps attempted an action outside your space's security policy. Review pending approvals to allow or deny.
+            </p>
           </div>
 
           <!-- Steps Timeline -->
@@ -212,6 +250,132 @@
 
   </main>
 
+  <!-- MODAL: Pair Device Link -->
+  <div id="pairModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel bg-gray-900 border border-gray-700 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-gray-800">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+          Pair Another Device
+        </h3>
+        <button onclick="closePairModal()" class="text-gray-400 hover:text-white">&times;</button>
+      </div>
+
+      <p class="text-xs text-gray-300 leading-relaxed">
+        Open this link on another device or browser to immediately connect to this private workspace.
+      </p>
+
+      <div class="space-y-1">
+        <label class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Pairing URL</label>
+        <div class="flex gap-2">
+          <input id="pairUrlInput" type="text" readonly class="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-xs font-mono text-gray-200 select-all" />
+          <button onclick="copyPairUrl()" id="copyPairBtn" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition">
+            Copy
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-amber-950/30 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-200 space-y-1">
+        <div class="font-bold flex items-center gap-1.5 text-amber-400">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          Security Notice: Bearer-Token Pairing
+        </div>
+        <p class="text-[11px] leading-relaxed text-amber-200/90">
+          This is lightweight bearer-token pairing, not full authentication. Anyone who has this link or token can access your private workspace and execute tasks within your policy rules. Keep it private.
+        </p>
+      </div>
+
+      <div class="pt-2 flex justify-end">
+        <button onclick="closePairModal()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Approvals Center -->
+  <div id="approvalsModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel bg-gray-900 border border-gray-700 rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between pb-3 border-b border-gray-800">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          Policy Approvals Center
+        </h3>
+        <button onclick="closeApprovalsModal()" class="text-gray-400 hover:text-white">&times;</button>
+      </div>
+
+      <p class="text-xs text-gray-400">
+        Saha enforces security policies in deterministic code. When an action requires privileges outside your policy, it is paused here for your explicit authorization.
+      </p>
+
+      <div id="approvalsList" class="flex-1 overflow-y-auto space-y-3 pr-1">
+        <div class="text-xs text-gray-500 py-6 text-center">Loading approvals...</div>
+      </div>
+
+      <div class="pt-3 border-t border-gray-800 flex justify-end">
+        <button onclick="closeApprovalsModal()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Privacy Egress Ledger -->
+  <div id="egressModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel bg-gray-900 border border-gray-700 rounded-2xl max-w-3xl w-full p-6 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between pb-3 border-b border-gray-800">
+        <div>
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+            Privacy Egress Ledger
+          </h3>
+          <p class="text-xs text-gray-400 mt-0.5">Audit log of outbound model calls. Zero raw prompt or response content is ever stored.</p>
+        </div>
+        <button onclick="closeEgressModal()" class="text-gray-400 hover:text-white">&times;</button>
+      </div>
+
+      <!-- Stats row -->
+      <div class="grid grid-cols-3 gap-3">
+        <div class="bg-gray-950/80 p-3 rounded-xl border border-gray-800">
+          <div class="text-[10px] uppercase font-bold text-gray-400">Total Calls</div>
+          <div id="egressTotalCalls" class="text-lg font-bold font-mono text-white mt-0.5">0</div>
+        </div>
+        <div class="bg-gray-950/80 p-3 rounded-xl border border-gray-800">
+          <div class="text-[10px] uppercase font-bold text-gray-400">Total Chars Sent/Rcvd</div>
+          <div id="egressTotalChars" class="text-lg font-bold font-mono text-emerald-400 mt-0.5">0 / 0</div>
+        </div>
+        <div class="bg-gray-950/80 p-3 rounded-xl border border-gray-800">
+          <div class="text-[10px] uppercase font-bold text-gray-400">Total Redactions</div>
+          <div id="egressTotalRedactions" class="text-lg font-bold font-mono text-amber-400 mt-0.5">0</div>
+        </div>
+      </div>
+
+      <div id="egressTableContainer" class="flex-1 overflow-y-auto border border-gray-800 rounded-xl max-h-[350px]">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-gray-950 text-gray-400 font-mono text-[11px] sticky top-0 border-b border-gray-800">
+            <tr>
+              <th class="p-2.5">Time</th>
+              <th class="p-2.5">Role</th>
+              <th class="p-2.5">Model</th>
+              <th class="p-2.5">Tags</th>
+              <th class="p-2.5 text-right">In / Out</th>
+              <th class="p-2.5 text-right">Redactions</th>
+            </tr>
+          </thead>
+          <tbody id="egressTableBody" class="divide-y divide-gray-800 font-mono">
+            <tr><td colspan="6" class="p-4 text-center text-gray-500">Loading audit log...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pt-2 flex justify-end">
+        <button onclick="closeEgressModal()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Footer -->
   <footer class="border-t border-gray-900 bg-gray-950 py-5 text-center text-xs text-gray-500 mt-auto">
     <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
@@ -227,7 +391,56 @@
   <!-- Vanilla JS Engine -->
   <script>
     let activeTaskId = null;
-    let pollInterval = null;
+    let cachedOwnerToken = null;
+
+    // --- OWNER TOKEN & PAIRING ---
+    function getOwnerToken() {
+      if (cachedOwnerToken) return cachedOwnerToken;
+
+      // 1. Check URL fragment for #pair=<token>
+      const hash = window.location.hash || "";
+      if (hash.startsWith("#pair=")) {
+        const token = hash.replace("#pair=", "").trim();
+        if (token && /^[a-fA-F0-9]{32,64}$/.test(token)) {
+          localStorage.setItem("saha_owner_token", token);
+          cachedOwnerToken = token;
+          // Clean the fragment without triggering navigation
+          history.replaceState(null, "", window.location.pathname + window.location.search);
+          updateOwnerBadge();
+          return token;
+        }
+      }
+
+      // 2. Check localStorage
+      let token = localStorage.getItem("saha_owner_token");
+      if (!token) {
+        // Generate a random 128-bit hex token (16 bytes = 32 hex chars)
+        const bytes = new Uint8Array(16);
+        window.crypto.getRandomValues(bytes);
+        token = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        localStorage.setItem("saha_owner_token", token);
+      }
+      cachedOwnerToken = token;
+      updateOwnerBadge();
+      return token;
+    }
+
+    function updateOwnerBadge() {
+      const token = cachedOwnerToken || localStorage.getItem("saha_owner_token") || "";
+      const badge = document.getElementById("ownerBadge");
+      if (badge && token) {
+        badge.innerText = `Space: ${token.substring(0, 8)}...`;
+      }
+    }
+
+    // Helper for all authenticated Saha API calls
+    async function sahaFetch(url, options = {}) {
+      const token = getOwnerToken();
+      const headers = Object.assign({}, options.headers || {}, {
+        "X-Saha-Owner": token
+      });
+      return fetch(url, Object.assign({}, options, { headers }));
+    }
 
     const chipGoals = {
       0: "Create two small data files with different facts about Hyderabad, combine them into a summary file, and check that https://example.com is reachable.",
@@ -248,7 +461,7 @@
 
     async function checkHealth() {
       try {
-        const res = await fetch("/health");
+        const res = await sahaFetch("/health");
         const data = await res.json();
         if (data.demo_mode) {
           document.getElementById("demoBadge").classList.remove("hidden");
@@ -260,14 +473,14 @@
 
     async function loadTasks() {
       try {
-        const res = await fetch("/tasks");
+        const res = await sahaFetch("/tasks");
         const data = await res.json();
         const list = document.getElementById("tasksList");
         const tasks = data.tasks || [];
         document.getElementById("taskCountBadge").innerText = tasks.length;
 
         if (tasks.length === 0) {
-          list.innerHTML = `<div class="text-xs text-gray-500 py-4 text-center">No tasks recorded yet.</div>`;
+          list.innerHTML = `<div class="text-xs text-gray-500 py-4 text-center">No tasks in this private space.</div>`;
           return;
         }
 
@@ -323,7 +536,7 @@
     async function loadTaskDetail() {
       if (!activeTaskId) return;
       try {
-        const res = await fetch(`/tasks/${activeTaskId}`);
+        const res = await sahaFetch(`/tasks/${activeTaskId}`);
         if (!res.ok) return;
         const data = await res.json();
         const task = data.task;
@@ -344,7 +557,7 @@
         pillEl.className = `px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${statusColors[task.status] || 'bg-gray-800 text-gray-300'}`;
         pillEl.innerText = task.status;
 
-        // Drift Banner: display while drift is active/unresolved
+        // Drift Banner
         const driftBanner = document.getElementById("driftBanner");
         if (data.has_drift && task.status !== 'complete') {
           driftBanner.classList.remove("hidden");
@@ -354,6 +567,15 @@
           document.getElementById("driftDetails").innerText = `Step: ${latestDrift.step_id ? latestDrift.step_id.substring(0,8) : '--'} | Tool: ${latestDrift.tool} | Detected: ${latestDrift.reason}`;
         } else {
           driftBanner.classList.add("hidden");
+        }
+
+        // Policy Blocked Alert
+        const hasBlockedStep = steps.some(s => s.status === 'blocked');
+        const blockedAlert = document.getElementById("policyBlockedAlert");
+        if (hasBlockedStep) {
+          blockedAlert.classList.remove("hidden");
+        } else {
+          blockedAlert.classList.add("hidden");
         }
 
         document.getElementById("timelineStats").innerText = `${steps.length} steps recorded in append-only ledger`;
@@ -367,6 +589,7 @@
             pending:    'bg-gray-800/80 text-gray-400 border-gray-700',
             drifted:    'bg-amber-500/20 text-amber-300 border-amber-500/50',
             superseded: 'bg-gray-900 text-gray-500 border-gray-800 opacity-60 line-through-title',
+            blocked:    'bg-purple-500/20 text-purple-300 border-purple-500/50',
             failed:     'bg-rose-500/20 text-rose-300 border-rose-500/50',
           };
           const badgeStyle = badgeStyles[s.status] || 'bg-gray-800 text-gray-300 border-gray-700';
@@ -389,8 +612,20 @@
 
               <div class="text-sm font-semibold text-white">${s.intent}</div>
 
+              <!-- Blocked by Policy info -->
+              ${s.status === 'blocked' ? `
+                <div class="text-xs bg-purple-950/40 border border-purple-500/30 rounded-lg p-2.5 text-purple-200 font-mono flex items-center justify-between">
+                  <div>
+                    <span class="font-bold text-purple-400 uppercase text-[10px]">Blocked:</span> ${s.drift_reason || 'Policy authorization required'}
+                  </div>
+                  <button onclick="openApprovalsModal()" class="px-2 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-[11px] font-sans font-semibold">
+                    Review Approval
+                  </button>
+                </div>
+              ` : ''}
+
               <!-- Drift Reason / Superseded / Resolved metadata -->
-              ${s.drift_reason ? `
+              ${s.drift_reason && s.status !== 'blocked' ? `
                 <div class="text-xs bg-amber-950/40 border border-amber-500/30 rounded-lg p-2 text-amber-200 font-mono">
                   <div class="font-bold text-[10px] text-amber-400 uppercase">Reality Drift:</div>
                   ${s.drift_reason}
@@ -428,7 +663,7 @@
       btn.innerText = "Planning...";
 
       try {
-        const res = await fetch("/tasks", {
+        const res = await sahaFetch("/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ goal })
@@ -453,7 +688,7 @@
     async function runActiveTask() {
       if (!activeTaskId) return;
       try {
-        await fetch(`/tasks/${activeTaskId}/run`, { method: "POST" });
+        await sahaFetch(`/tasks/${activeTaskId}/run`, { method: "POST" });
         loadTaskDetail();
       } catch (e) {
         alert("Failed to run task: " + e);
@@ -463,7 +698,7 @@
     async function sabotageActiveTask() {
       if (!activeTaskId) return;
       try {
-        const res = await fetch(`/tasks/${activeTaskId}/sabotage`, { method: "POST" });
+        const res = await sahaFetch(`/tasks/${activeTaskId}/sabotage`, { method: "POST" });
         const data = await res.json();
         alert(`Sabotage injected: Deleted physical file "${data.deleted_file}" directly from disk.\nLedger untouched: true.\nClick "Resume & Reconcile" to detect drift.`);
         loadTaskDetail();
@@ -475,10 +710,230 @@
     async function resumeActiveTask() {
       if (!activeTaskId) return;
       try {
-        await fetch(`/tasks/${activeTaskId}/resume`, { method: "POST" });
+        await sahaFetch(`/tasks/${activeTaskId}/resume`, { method: "POST" });
         loadTaskDetail();
       } catch (e) {
         alert("Failed to resume task: " + e);
+      }
+    }
+
+    // --- PAIR MODAL ---
+    async function openPairModal() {
+      try {
+        const res = await sahaFetch("/owner/pair-link", { method: "POST" });
+        const data = await res.json();
+        const modal = document.getElementById("pairModal");
+        const input = document.getElementById("pairUrlInput");
+        input.value = data.pair_link || `${window.location.origin}/#pair=${getOwnerToken()}`;
+        modal.classList.remove("hidden");
+      } catch (e) {
+        alert("Failed to generate pair link: " + e);
+      }
+    }
+
+    function closePairModal() {
+      document.getElementById("pairModal").classList.add("hidden");
+    }
+
+    function copyPairUrl() {
+      const input = document.getElementById("pairUrlInput");
+      input.select();
+      navigator.clipboard.writeText(input.value);
+      const btn = document.getElementById("copyPairBtn");
+      btn.innerText = "Copied!";
+      setTimeout(() => btn.innerText = "Copy", 1500);
+    }
+
+    // --- APPROVALS MODAL ---
+    async function checkPendingApprovals() {
+      try {
+        const res = await sahaFetch("/approvals");
+        if (!res.ok) return;
+        const data = await res.json();
+        const pending = (data.approvals || []).filter(a => a.status === 'pending');
+        const badge = document.getElementById("pendingApprovalsCount");
+        if (pending.length > 0) {
+          badge.innerText = pending.length;
+          badge.classList.remove("hidden");
+        } else {
+          badge.classList.add("hidden");
+        }
+      } catch (e) {
+        // silent
+      }
+    }
+
+    async function openApprovalsModal() {
+      document.getElementById("approvalsModal").classList.remove("hidden");
+      await loadApprovals();
+    }
+
+    function closeApprovalsModal() {
+      document.getElementById("approvalsModal").classList.add("hidden");
+    }
+
+    async function loadApprovals() {
+      const list = document.getElementById("approvalsList");
+      try {
+        const res = await sahaFetch("/approvals");
+        const data = await res.json();
+        const approvals = data.approvals || [];
+        if (approvals.length === 0) {
+          list.innerHTML = `<div class="text-xs text-gray-500 py-8 text-center">No approvals pending or recorded.</div>`;
+          return;
+        }
+
+        list.innerHTML = approvals.map(a => {
+          const isPending = a.status === 'pending';
+          const statusColors = {
+            pending: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+            approved: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+            denied: 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+          };
+          return `
+            <div class="p-3.5 rounded-xl border border-gray-800 bg-gray-950/70 space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-mono font-bold text-gray-300">${a.tool}</span>
+                  <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${statusColors[a.status]}">${a.status}</span>
+                </div>
+                <span class="text-[10px] text-gray-500 font-mono">${new Date(a.created_at).toLocaleTimeString()}</span>
+              </div>
+              <div class="text-xs text-gray-300"><span class="text-gray-500 font-semibold">Reason:</span> ${a.reason}</div>
+              <div class="text-[11px] text-gray-400 font-mono bg-gray-900 p-2 rounded border border-gray-800/80 break-all">
+                Context: ${JSON.stringify(a.context || {})}
+              </div>
+
+              ${isPending ? `
+                <div class="flex items-center justify-end gap-2 pt-2 border-t border-gray-800/80">
+                  <button onclick="handleDenyApproval('${a.id}')" class="px-3 py-1.5 bg-rose-950/70 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs rounded-lg font-medium transition">
+                    Deny
+                  </button>
+                  <button onclick="handleApproveApproval('${a.id}', false)" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs rounded-lg font-medium transition">
+                    Approve Once
+                  </button>
+                  <button onclick="handleApproveApproval('${a.id}', true)" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs rounded-lg font-semibold transition">
+                    Always Allow (Update Policy)
+                  </button>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        list.innerHTML = `<div class="text-xs text-rose-400 py-4 text-center">Failed to load approvals: ${e}</div>`;
+      }
+    }
+
+    async function handleApproveApproval(id, alwaysAllow) {
+      try {
+        const res = await sahaFetch(`/approvals/${id}/approve`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ always_allow: alwaysAllow })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          alert("Approval failed: " + (err.detail || "Unknown error"));
+          return;
+        }
+        await loadApprovals();
+        await checkPendingApprovals();
+        if (activeTaskId) loadTaskDetail();
+      } catch (e) {
+        alert("Action failed: " + e);
+      }
+    }
+
+    async function handleDenyApproval(id) {
+      try {
+        const res = await sahaFetch(`/approvals/${id}/deny`, { method: "POST" });
+        if (!res.ok) {
+          const err = await res.json();
+          alert("Denial failed: " + (err.detail || "Unknown error"));
+          return;
+        }
+        await loadApprovals();
+        await checkPendingApprovals();
+        if (activeTaskId) loadTaskDetail();
+      } catch (e) {
+        alert("Action failed: " + e);
+      }
+    }
+
+    // --- PRIVACY EGRESS MODAL ---
+    async function openEgressModal() {
+      document.getElementById("egressModal").classList.remove("hidden");
+      await loadEgress();
+    }
+
+    function closeEgressModal() {
+      document.getElementById("egressModal").classList.add("hidden");
+    }
+
+    async function loadEgress() {
+      const tbody = document.getElementById("egressTableBody");
+      try {
+        const res = await sahaFetch("/egress");
+        const data = await res.json();
+        const logs = data.egress || [];
+        
+        // Compute summary metrics
+        let totalCalls = logs.length;
+        let inChars = 0;
+        let outChars = 0;
+        let totalRedactions = 0;
+        for (const log of logs) {
+          inChars += (log.input_chars || 0);
+          outChars += (log.output_chars || 0);
+          totalRedactions += (log.redaction_count || 0);
+        }
+
+        document.getElementById("egressTotalCalls").innerText = totalCalls;
+        document.getElementById("egressTotalChars").innerText = `${inChars.toLocaleString()} / ${outChars.toLocaleString()}`;
+        document.getElementById("egressTotalRedactions").innerText = totalRedactions;
+
+        if (logs.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-gray-500">No outbound model calls logged yet.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = logs.map(l => {
+          const tagsStr = Array.isArray(l.tags) ? l.tags.join(', ') : (l.tags || '--');
+          return `
+            <tr class="hover:bg-gray-800/40">
+              <td class="p-2.5 text-gray-400 whitespace-nowrap">${new Date(l.created_at).toLocaleTimeString()}</td>
+              <td class="p-2.5 font-bold text-gray-300">${l.role}</td>
+              <td class="p-2.5 text-gray-400 max-w-[140px] truncate" title="${l.model}">${l.model}</td>
+              <td class="p-2.5 text-gray-400 max-w-[160px] truncate" title="${tagsStr}">${tagsStr}</td>
+              <td class="p-2.5 text-right font-medium text-emerald-400">${(l.input_chars || 0).toLocaleString()} / ${(l.output_chars || 0).toLocaleString()}</td>
+              <td class="p-2.5 text-right font-medium ${l.redaction_count > 0 ? 'text-amber-400' : 'text-gray-500'}">${l.redaction_count || 0}</td>
+            </tr>
+          `;
+        }).join('');
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-rose-400">Failed to load egress ledger: ${e}</td></tr>`;
+      }
+    }
+
+    // --- RESET SPACE ---
+    async function confirmDeleteSpace() {
+      if (!confirm("Are you sure you want to RESET this private space?\n\nThis will permanently delete all tasks, files, execution history, approvals, and logs associated with your bearer token.")) {
+        return;
+      }
+      try {
+        const res = await sahaFetch("/owner/space", { method: "DELETE" });
+        if (!res.ok) {
+          const err = await res.json();
+          alert("Reset failed: " + (err.detail || "Unknown error"));
+          return;
+        }
+        localStorage.removeItem("saha_owner_token");
+        cachedOwnerToken = null;
+        alert("Private space deleted. Generating a fresh bearer token.");
+        window.location.reload();
+      } catch (e) {
+        alert("Failed to reset space: " + e);
       }
     }
 
@@ -487,18 +942,26 @@
       if (activeTaskId) {
         loadTaskDetail();
       }
+      checkPendingApprovals();
     }
 
-    // Auto-polling
+    // Auto-polling & initialization
     window.addEventListener("DOMContentLoaded", () => {
+      getOwnerToken();
       checkHealth();
       loadTasks();
+      checkPendingApprovals();
+
       setInterval(() => {
         if (activeTaskId) {
           loadTaskDetail();
         }
       }, 1000);
-      setInterval(loadTasks, 4000);
+
+      setInterval(() => {
+        loadTasks();
+        checkPendingApprovals();
+      }, 3500);
     });
   </script>
 </body>
