@@ -1,0 +1,8 @@
+openai==3.41.0
+python-dotenv==1.2.4
+truststore==0.10.5
+fastapi==0.162.0
+uvicorn==0.54.0
+pydantic==2.14.1
+pytest==9.2.0
+httpx==0.28.1
