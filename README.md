@@ -241,9 +241,25 @@ Container platforms like Render and Railway dynamically assign an external HTTP 
 
 ---
 
+## Interruption Recovery & Mutation Deduplication
+
+Saha is engineered to survive unexpected process terminations (crashes, power loss, SIGKILL) without data corruption or duplicate external side effects:
+
+- **Idempotent Local Filesystem Steps**: Interrupted local file writes are safely re-executed since writes to the isolated workspace are deterministic and overwrite-safe. Completed steps verified by physical SHA-256 probes are never executed twice.
+- **Supported HTTP Targets (Idempotency Key)**: When an external HTTP mutation (POST, PUT, DELETE, PATCH) targets a service supporting idempotency, Saha generates, transactionally persists to SQLite, and reuses a stable Idempotency-Key across retries. The remote service recognizes the key and deduplicates without applying duplicate mutations.
+- **Unsupported HTTP Targets (Conservative Ambiguity Handling)**: If an external mutation on an unsupported target is interrupted before an HTTP response is recorded, its outcome cannot be verified. Saha refuses to blindly retry it. It records an explicit locked state (lock_reason = 'Ambiguous external HTTP mutation') and logs an approval request, pausing the task until the owner investigates and provides an authorized resume decision (pprove or deny).
+- **Policy Enforcement**: Resumed actions strictly evaluate owner security policies (allowed tools, domain allowlists, path restrictions) before any network dispatch.
+
+### Real vs. Mocked Telemetry Accounting
+- **Real Systems**: SQLite WAL persistence (saha.db), step execution state machine, filesystem isolation, SHA-256 verification probes, policy engine, approval ledger, and HTTP client (httpx).
+- **Mocked Components**: In automated tests and demo scripts, remote external HTTP mutation targets are mocked in-process to deterministically simulate mid-flight socket drops and SIGKILL interrupts without reliance on third-party API availability. LLM calls are mocked in offline test runs.
+
+---
+
 ## Limitations & Roadmap
 
 We are candid about Saha's current scope and future trajectory:
+- **Non-Idempotent External APIs without Status Probes**: If a third-party remote service does not support idempotency keys and does not expose a queryable status/read endpoint, automated recovery cannot resolve whether an interrupted request was committed, requiring owner reconciliation.
 - **Cross-Device Ledger Synchronization**: Current ledger is backed by local SQLite WAL. Cloud ledger sync (CRDTs / Postgres replication) across mobile and desktop nodes is planned.
 - **Always-On Background Daemon**: Currently execution is session- or user-triggered. An autonomous heartbeat runner with cron scheduling and webhook triggers is future work.
 - **Call Triage & Multi-Agent Workforce**: Saha currently focuses on single-agent planner/worker/auditor coordination. Hierarchical multi-agent delegation and autonomous call triage will be added in v2.0.

@@ -564,6 +564,25 @@ class Ledger:
         }
 
     @staticmethod
+    def update_step_args(
+        step_id: str,
+        args: Union[Dict[str, Any], str],
+        db_path: Optional[str] = None,
+    ) -> Step:
+        """Update step args_json in SQLite ledger."""
+        init_db(db_path)
+        args_json = json.dumps(args) if not isinstance(args, str) else args
+        with get_db(db_path) as conn:
+            conn.execute(
+                "UPDATE steps SET args_json = ? WHERE id = ?",
+                (args_json, step_id),
+            )
+        step = Ledger.get_step(step_id, db_path)
+        if not step:
+            raise RuntimeError(f"Step {step_id} not found")
+        return step
+
+    @staticmethod
     def reset_step_to_pending(
         step_id: str,
         db_path: Optional[str] = None,
@@ -594,24 +613,33 @@ class Ledger:
 
         If the step was in 'done' state with a recorded result, runs deterministic
         verification. If the probe passes, transitions to 'verified'.
-        If outcome cannot be verified or was in 'running' state, resets to 'pending'.
+        If the step is an interrupted external HTTP mutation:
+          - If the target supports idempotency and a stable key is available, resets
+            to 'pending' for safe deduplicated retry.
+          - If the outcome cannot be verified and deduplication is unavailable, does
+            NOT automatically retry. Transitions to 'blocked' (needs reconciliation)
+            and creates an approval request requiring authorized decision.
+        For other unverified or interrupted steps (e.g. local idempotent operations or
+        safe read-only HTTP GET), resets to 'pending'.
         """
         from backend.verifiers import verify_step
+        from backend.tools.http import is_http_mutation_step, target_supports_idempotency
 
+        try:
+            args = json.loads(step.args_json) if step.args_json else {}
+        except Exception:
+            args = {}
+        try:
+            result = json.loads(step.result_json) if step.result_json else {}
+        except Exception:
+            result = {}
+        try:
+            probe_spec = json.loads(step.probe_json) if step.probe_json else {}
+        except Exception:
+            probe_spec = {}
+
+        # 1. If step reached 'done' with recorded result, run deterministic probe
         if step.status == "done" and step.result_json:
-            try:
-                args = json.loads(step.args_json) if step.args_json else {}
-            except Exception:
-                args = {}
-            try:
-                result = json.loads(step.result_json) if step.result_json else {}
-            except Exception:
-                result = {}
-            try:
-                probe_spec = json.loads(step.probe_json) if step.probe_json else {}
-            except Exception:
-                probe_spec = {}
-
             probe_result = verify_step(
                 tool=step.tool,
                 args=args,
@@ -622,7 +650,41 @@ class Ledger:
             if probe_result.get("passed"):
                 return Ledger.mark_step_verified(step.id, probe=probe_result, db_path=db_path)
 
-        # Conservative fallback: outcome is ambiguous or unverified -> reset to pending
+        # 2. Check if this is an external HTTP mutation
+        if is_http_mutation_step(step.tool, args):
+            # Check if deduplication / stable idempotency key is supported
+            supports_idem = target_supports_idempotency(step.tool, args)
+
+            if supports_idem:
+                # Deduplication is available! Ensure stable key is persisted for retry
+                if not args.get("idempotency_key"):
+                    args["idempotency_key"] = f"idem_{step.id}"
+                    Ledger.update_step_args(step.id, args, db_path=db_path)
+                return Ledger.reset_step_to_pending(step.id, db_path=db_path)
+            else:
+                # Ambiguous mutation without deduplication: remote service may have applied it!
+                # Do NOT automatically retry. Record explicit ambiguous state and require authorized decision.
+                from backend.policy import create_approval
+                from backend.db import get_task_owner_id
+
+                owner_id = get_task_owner_id(task_id, db_path=db_path) or "default"
+                reason = (
+                    "Ambiguous external HTTP mutation: Interrupted before response was recorded "
+                    "and deduplication/idempotency is unavailable. Requires authorized resume decision "
+                    "to reconcile or retry."
+                )
+                create_approval(
+                    owner_id=owner_id,
+                    task_id=task_id,
+                    step_id=step.id,
+                    tool=step.tool,
+                    args=args,
+                    reason=reason,
+                    db_path=db_path,
+                )
+                return Ledger.mark_step_blocked(step.id, reason=reason, db_path=db_path)
+
+        # 3. Conservative fallback for safe/idempotent steps: reset to pending
         return Ledger.reset_step_to_pending(step.id, db_path=db_path)
 
     @staticmethod

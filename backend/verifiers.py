@@ -220,6 +220,50 @@ def verify_http_get(
     }
 
 
+def verify_http_request(
+    args: Dict[str, Any],
+    result: Optional[Dict[str, Any]] = None,
+    probe_spec: Optional[Dict[str, Any]] = None,
+    task_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Verify http_request / http_post / http_mutation: status code, body, and remote assertions."""
+    url = args.get("url")
+    if not url:
+        return {"passed": False, "error": "Missing 'url' in step args", "details": {}}
+
+    spec = probe_spec or {}
+    raw_method = str(args.get("method", "POST" if ("body" in args or "json" in args or "data" in args) else "GET")).upper()
+    default_expected = [200, 201, 202, 204] if raw_method in ("POST", "PUT", "DELETE", "PATCH") else 200
+    expected_status = spec.get("expected_status", default_expected)
+    expected_statuses = expected_status if isinstance(expected_status, (list, tuple, set)) else [expected_status]
+
+    if not result:
+        return {"passed": False, "error": "No execution result recorded for HTTP step", "details": {}}
+
+    status = result.get("status_code")
+    if status not in expected_statuses:
+        return {
+            "passed": False,
+            "error": f"HTTP status code mismatch: expected {expected_statuses}, got {status}",
+            "details": {"status_code": status, "url": url},
+        }
+
+    expected_body_substr = spec.get("expected_body_substring")
+    if expected_body_substr:
+        body = result.get("body", "")
+        if expected_body_substr not in body:
+            return {
+                "passed": False,
+                "error": f"Expected substring '{expected_body_substr}' not found in HTTP body",
+                "details": {"url": url},
+            }
+
+    return {
+        "passed": True,
+        "details": {"url": url, "status_code": status, "method": raw_method},
+    }
+
+
 def verify_list_files(
     args: Dict[str, Any],
     result: Optional[Dict[str, Any]] = None,
@@ -259,6 +303,9 @@ def verify_step(
         "read_file": lambda: verify_read_file(args, result, probe_spec, task_id=task_id),
         "run_shell": lambda: verify_run_shell(args, result, probe_spec, task_id=task_id),
         "http_get": lambda: verify_http_get(args, result, probe_spec, task_id=task_id),
+        "http_request": lambda: verify_http_request(args, result, probe_spec, task_id=task_id),
+        "http_post": lambda: verify_http_request(args, result, probe_spec, task_id=task_id),
+        "http_mutation": lambda: verify_http_request(args, result, probe_spec, task_id=task_id),
         "list_files": lambda: verify_list_files(args, result, probe_spec, task_id=task_id),
     }
 

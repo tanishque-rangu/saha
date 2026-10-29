@@ -19,7 +19,7 @@ from backend.db import get_db, get_task_owner_id
 from backend.ledger import Ledger, Step, Task
 from backend.llm import WORKER_MODEL, call_llm
 from backend.policy import PUBLIC_ALLOWED_TOOLS, create_approval, evaluate_step_policy, get_owner_policy
-from backend.tools import http_get, read_file, run_shell, write_file
+from backend.tools import http_get, http_post, http_request, read_file, run_shell, write_file
 from backend.tools.files import list_files
 from backend.verifiers import verify_step
 
@@ -178,13 +178,53 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
                 "model_used": WORKER_MODEL,
             }
 
-        elif step.tool == "http_get":
+        elif step.tool in ("http_get", "http_request", "http_post", "http_mutation"):
             url = args.get("url")
             if not url:
-                raise ValueError("http_get requires 'url' argument")
-            res = http_get(url, allowed_domains=policy.allowed_domains)
-            if res.get("status_code") != 200:
-                raise RuntimeError(f"HTTP request failed with status {res.get('status_code')}: {res.get('error')}")
+                raise ValueError(f"{step.tool} requires 'url' argument")
+
+            if step.tool in ("http_post", "http_mutation"):
+                default_method = "POST"
+            elif "body" in args or "json" in args or "data" in args:
+                default_method = "POST"
+            else:
+                default_method = "GET"
+            method = str(args.get("method", default_method)).upper().strip()
+
+            # Deduplication / idempotency management for mutations
+            is_mutation = method in ("POST", "PUT", "DELETE", "PATCH")
+            idempotency_key = args.get("idempotency_key")
+            idempotency_header = args.get("idempotency_header", "Idempotency-Key")
+
+            if is_mutation:
+                from backend.tools.http import target_supports_idempotency
+                if target_supports_idempotency(step.tool, args) and not idempotency_key:
+                    # Generate stable key and PERSIST immediately to SQLite step args before network call
+                    idempotency_key = f"idem_{step.id}"
+                    args["idempotency_key"] = idempotency_key
+                    Ledger.update_step_args(step.id, args, db_path=db_path)
+
+            headers = args.get("headers") or {}
+            body = args.get("body") or args.get("content")
+            data = args.get("data")
+            json_data = args.get("json")
+
+            res = http_request(
+                url=url,
+                method=method,
+                headers=headers,
+                data=data or body,
+                json_data=json_data,
+                allowed_domains=policy.allowed_domains,
+                idempotency_key=idempotency_key,
+                idempotency_header=idempotency_header,
+            )
+
+            expected_success_codes = (200, 201, 202, 204) if is_mutation else (200,)
+            if res.get("status_code") not in expected_success_codes:
+                raise RuntimeError(
+                    f"HTTP {method} request failed with status {res.get('status_code')}: {res.get('error')}"
+                )
 
             # WORKER writes a 1-sentence interpretation of HTTP response
             worker_prompt = (
@@ -202,8 +242,10 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
             )
             result = {
                 "url": res["url"],
+                "method": method,
                 "status_code": res["status_code"],
                 "body_length": res["body_length"],
+                "idempotency_key": idempotency_key,
                 "interpretation": interpretation.strip(),
                 "model_used": WORKER_MODEL,
             }
@@ -275,6 +317,11 @@ def run_task(task_id: str, db_path: Optional[str] = None) -> Task:
         while True:
             # Re-fetch active (non-superseded) steps
             active_steps = Ledger.get_steps(task_id, include_superseded=False, db_path=db_path)
+            blocked_steps = [s for s in active_steps if s.status == "blocked"]
+            if blocked_steps:
+                Ledger.update_task_status(task_id, "paused", db_path=db_path)
+                return Ledger.get_task(task_id, db_path=db_path)
+
             pending_steps = [s for s in active_steps if s.status == "pending"]
             if not pending_steps:
                 break

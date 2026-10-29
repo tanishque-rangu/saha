@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from backend.db import get_db, init_db, utc_now_iso
 
 
-PUBLIC_ALLOWED_TOOLS = frozenset({"write_file", "read_file", "http_get", "list_files"})
+PUBLIC_ALLOWED_TOOLS = frozenset({"write_file", "read_file", "http_get", "http_request", "list_files"})
 
 
 def is_public_mode() -> bool:
@@ -32,7 +32,7 @@ class Policy(BaseModel):
     allowed_tools: List[str] = Field(
         default_factory=lambda: ["write_file", "read_file", "http_get", "list_files"]
         if is_public_mode()
-        else ["write_file", "read_file", "run_shell", "http_get", "list_files"],
+        else ["write_file", "read_file", "run_shell", "http_get", "http_request", "list_files"],
         description="List of permitted tool names for execution.",
     )
     allowed_domains: List[str] = Field(
@@ -64,7 +64,7 @@ def get_default_policy() -> Policy:
             max_steps=8,
         )
     return Policy(
-        allowed_tools=["write_file", "read_file", "run_shell", "http_get", "list_files"],
+        allowed_tools=["write_file", "read_file", "run_shell", "http_get", "http_request", "list_files"],
         allowed_domains=["example.com", "wikipedia.org", "httpbin.org"],
         allowed_paths=["*"],
         auto_heal=True,
@@ -142,10 +142,10 @@ def evaluate_step_policy(
         return False, f"Tool '{tool}' is not permitted by owner policy. Allowed tools: {policy.allowed_tools}."
 
     # 3. HTTP domain permission check
-    if tool == "http_get":
+    if tool in ("http_get", "http_request", "http_post", "http_mutation"):
         url = args.get("url", "")
         if not url:
-            return False, "Missing 'url' argument for http_get."
+            return False, f"Missing 'url' argument for {tool}."
         try:
             parsed = urllib.parse.urlparse(url)
             host = (parsed.hostname or "").lower()
@@ -271,7 +271,7 @@ def approve_request(
         policy = get_owner_policy(owner_id, db_path=db_path)
         if tool not in policy.allowed_tools:
             policy.allowed_tools.append(tool)
-        if tool == "http_get" and args.get("url"):
+        if tool in ("http_get", "http_request", "http_post", "http_mutation") and args.get("url"):
             try:
                 host = urllib.parse.urlparse(args["url"]).hostname
                 if host and host not in policy.allowed_domains:
