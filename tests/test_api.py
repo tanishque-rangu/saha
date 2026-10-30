@@ -140,3 +140,110 @@ def test_sabotage_disabled_when_not_demo(client, monkeypatch):
     task = Ledger.create_task("Test Non Demo Sabotage")
     res = client.post(f"/tasks/{task.id}/sabotage")
     assert res.status_code == 403
+
+
+def test_proxy_forwarded_for_ip_rate_limiting_separate_buckets(tmp_path, monkeypatch):
+    """With FORWARDED_ALLOW_IPS=* and X-Forwarded-For set, Uvicorn updates request.client.host,
+    ensuring distinct forwarded IPs receive isolated rate limit buckets through the real ASGI stack."""
+    import json
+    import socket
+    import threading
+    import time
+    import urllib.error
+    import urllib.request
+    import uvicorn
+    from backend.api import app, IP_POST_HISTORY, OWNER_POST_HISTORY
+    from backend.db import init_db
+
+    db_path = str(tmp_path / "proxy_test.db")
+    ws_path = str(tmp_path / "workspace")
+    monkeypatch.setenv("SAHA_DB_PATH", db_path)
+    monkeypatch.setenv("SAHA_WORKSPACE_ROOT", ws_path)
+    monkeypatch.setenv("FORWARDED_ALLOW_IPS", "*")
+    monkeypatch.setenv("SAHA_PUBLIC_MODE", "true")
+    monkeypatch.setenv("SAHA_DEMO_MODE", "true")
+    monkeypatch.setenv("SAHA_WATCHER_ENABLED", "false")
+    monkeypatch.setenv("NEBIUS_API_KEY", "")
+
+    init_db(db_path)
+    IP_POST_HISTORY.clear()
+    OWNER_POST_HISTORY.clear()
+
+    # Find free port
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+
+    mock_step = MagicMock(idx=1, intent="Test", tool="write_file", args={"path": "a.txt", "content": "1"}, probe={}, depends_on=[])
+
+    with patch("backend.api.generate_plan", return_value=[mock_step]):
+        config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", forwarded_allow_ips="*")
+        server = uvicorn.Server(config)
+        t = threading.Thread(target=server.run, daemon=True)
+        t.start()
+
+        try:
+            # Wait for server ready
+            deadline = time.time() + 5.0
+            while time.time() < deadline:
+                try:
+                    with urllib.request.urlopen(f"http://127.0.0.1:{port}/health") as r:
+                        if r.status == 200:
+                            break
+                except Exception:
+                    time.sleep(0.05)
+
+            # 1. Send 10 tasks from IP 198.51.100.1 with 10 different owners
+            for i in range(10):
+                owner = f"owner_fwd1_{i:02d}_12345678901234567890"
+                data = json.dumps({"goal": f"Task {i}"}).encode("utf-8")
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/tasks",
+                    data=data,
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-Saha-Owner": owner,
+                        "X-Forwarded-For": "198.51.100.1",
+                    },
+                )
+                with urllib.request.urlopen(req) as resp:
+                    assert resp.status == 200
+
+            # 2. 11th request from IP 198.51.100.1 must be rate limited (429)
+            owner_11 = "owner_fwd1_11_12345678901234567890"
+            data_11 = json.dumps({"goal": "Task 11"}).encode("utf-8")
+            req_11 = urllib.request.Request(
+                f"http://127.0.0.1:{port}/tasks",
+                data=data_11,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Saha-Owner": owner_11,
+                    "X-Forwarded-For": "198.51.100.1",
+                },
+            )
+            got_429 = False
+            try:
+                urllib.request.urlopen(req_11)
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    got_429 = True
+            assert got_429, "Expected 429 for 11th request from IP 198.51.100.1"
+
+            # 3. Request from IP 198.51.100.2 must succeed (separate IP bucket)
+            owner_ip2 = "owner_fwd2_01_12345678901234567890"
+            data_ip2 = json.dumps({"goal": "Task IP2"}).encode("utf-8")
+            req_ip2 = urllib.request.Request(
+                f"http://127.0.0.1:{port}/tasks",
+                data=data_ip2,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Saha-Owner": owner_ip2,
+                    "X-Forwarded-For": "198.51.100.2",
+                },
+            )
+            with urllib.request.urlopen(req_ip2) as resp_ip2:
+                assert resp_ip2.status == 200
+        finally:
+            server.should_exit = True
+            t.join(timeout=3.0)

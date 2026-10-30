@@ -262,13 +262,20 @@ class Watcher:
                     db_path=self.db_path,
                 )
 
-                # 3. Trigger FAST model explanation in background (non-blocking)
-                from backend.resume import _generate_fast_explanation_worker
-                threading.Thread(
-                    target=_generate_fast_explanation_worker,
-                    args=(event_id, step.intent, verified_time, probe_name, error_msg, owner_id, self.db_path),
-                    daemon=True,
-                ).start()
+                # 3. Trigger FAST model explanation in background (non-blocking) if cap allows
+                can_spend_fast = True
+                try:
+                    check_daily_llm_limit(owner_id, db_path=self.db_path)
+                except Exception:
+                    can_spend_fast = False
+
+                if can_spend_fast:
+                    from backend.resume import _generate_fast_explanation_worker
+                    threading.Thread(
+                        target=_generate_fast_explanation_worker,
+                        args=(event_id, step.intent, verified_time, probe_name, error_msg, owner_id, self.db_path),
+                        daemon=True,
+                    ).start()
 
                 drifted_events.append((event_id, step.id))
 
@@ -354,6 +361,14 @@ class Watcher:
                 if skill.owner_id in self._running_routine_owners:
                     continue
                 self._running_routine_owners.add(skill.owner_id)
+
+            # Check daily LLM cap before triggering routine execution
+            try:
+                check_daily_llm_limit(skill.owner_id, db_path=self.db_path)
+            except Exception as e:
+                logger.warning("Skipping scheduled routine %s: daily LLM cap exhausted for owner %s (%s)", skill.id, skill.owner_id, e)
+                update_skill_schedule_outcome(skill.id, success=False, db_path=self.db_path)
+                continue
 
             try:
                 # Run the routine via the same code path as POST /skills/{id}/run
