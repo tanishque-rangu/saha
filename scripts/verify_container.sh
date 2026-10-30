@@ -263,6 +263,9 @@ import json
 from backend.db import hash_owner_token
 from backend.ledger import Ledger
 from backend.policy import Policy, set_owner_policy
+from backend.tools.files import write_file
+from backend.verifiers import verify_step
+from backend.tools.sandbox import resolve_workspace_path
 
 owner_id = hash_owner_token('$OWNER_TOKEN')
 policy = Policy(allowed_tools=['write_file', 'read_file', 'list_files'], allowed_domains=[], allowed_paths=['*'])
@@ -279,8 +282,23 @@ steps = Ledger.add_steps(task.id, [
         'depends_on': []
     }
 ])
-Ledger.mark_step_verified(steps[0].id, {'content_matches': True})
+
+# Write the actual file in the task's workspace sandbox
+res = write_file('persist_data.txt', 'persisted_in_volume', task_id=task.id)
+
+# Execute deterministic probe verifying physical file existence and SHA256 match
+probe = verify_step('write_file', {'path': 'persist_data.txt'}, result=res, task_id=task.id)
+assert probe.get('passed') is True, f'Probe failed: {probe}'
+
+Ledger.mark_step_done(steps[0].id, res)
+Ledger.mark_step_verified(steps[0].id, probe)
 Ledger.update_task_status(task.id, 'complete')
+
+# Verify file exists on disk and content matches before restart
+file_path = resolve_workspace_path('persist_data.txt', task_id=task.id)
+assert file_path.is_file(), f'File does not exist on disk: {file_path}'
+assert file_path.read_text(encoding='utf-8') == 'persisted_in_volume', 'File content mismatch'
+
 print(task.id)
 ")
 
