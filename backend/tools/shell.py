@@ -219,12 +219,19 @@ def validate_shell_security(cmd_str: str) -> None:
                 f"Shell metacharacter '{ch}' is strictly forbidden in run_shell."
             )
 
-    # 2. Raw traversal checks
+    # 2. Raw traversal and UNC checks on unescaped command tokens
+    raw_tokens = cmd_str.split()
+    for t in raw_tokens:
+        if is_unc_path(t):
+            raise PermissionError(f"UNC paths are forbidden: '{t}'")
+        if is_drive_relative(t) or bool(re.match(r"^[a-zA-Z]:", t)):
+            raise PermissionError(f"Drive paths are forbidden: '{t}'")
+
     tokens = shlex.split(cmd_str)
     for t in tokens:
         if ".." in t:
             raise PermissionError(f"Directory traversal '..' is strictly forbidden: '{t}'")
-        if is_drive_relative(t):
+        if is_drive_relative(t) or bool(re.match(r"^[a-zA-Z]:", t)):
             raise PermissionError(f"Drive-relative paths are forbidden: '{t}'")
         if is_unc_path(t):
             raise PermissionError(f"UNC paths are forbidden: '{t}'")
