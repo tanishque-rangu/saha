@@ -41,19 +41,23 @@
     html, body {
       max-width: 100vw;
       overflow-x: hidden;
-      background-color: #030712;
-      color: #f3f4f6;
+      background-color: #101715;
+      color: #F2F5F2;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
     .glass-panel {
-      background: rgba(17, 24, 39, 0.75);
+      background: #19221F;
       backdrop-filter: blur(12px);
-      border: 1px solid rgba(55, 65, 81, 0.5);
+      border: 1px solid #273631;
+    }
+    .glow-jade {
+      box-shadow: 0 0 24px -5px rgba(114, 214, 179, 0.22);
     }
     .glow-emerald {
-      box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.3);
+      box-shadow: 0 0 24px -5px rgba(114, 214, 179, 0.22);
     }
     .glow-amber {
-      box-shadow: 0 0 25px -5px rgba(245, 158, 11, 0.35);
+      box-shadow: 0 0 24px -5px rgba(245, 158, 11, 0.25);
     }
     .line-through-title {
       text-decoration: line-through;
@@ -65,45 +69,60 @@
       -ms-overflow-style: none;
       scrollbar-width: none;
     }
+    /* Subtle midnight-and-jade scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #101715;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #273631;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #364A43;
+    }
   </style>
 </head>
-<body class="min-h-screen flex flex-col font-sans selection:bg-emerald-500 selection:text-black overflow-x-hidden">
+<body class="min-h-screen flex flex-col font-sans selection:bg-[#72D6B3] selection:text-[#101715] overflow-x-hidden">
 
   <!-- Header -->
-  <header class="border-b border-gray-800 bg-gray-950/80 backdrop-blur sticky top-0 z-40">
+  <header class="border-b border-[#22312B] bg-[#101715]/95 backdrop-blur sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
       <div class="w-full lg:w-auto min-w-0">
         <div class="flex flex-wrap items-center gap-2 sm:gap-3">
-          <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-300 flex items-center justify-center font-display font-bold text-black text-xl shadow-lg shadow-emerald-500/20">
-            S
+          <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center p-0.5 shadow-md shadow-black/40 flex-shrink-0 overflow-hidden">
+            <img src="/assets/logo.png" alt="Saha Logo" class="w-full h-full object-contain" />
           </div>
-          <span class="font-display font-bold text-2xl tracking-tight text-white">Saha</span>
-          <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Persistent AI</span>
-          <span id="demoBadge" class="hidden px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30">Demo Mode</span>
-          <span id="ownerBadge" class="px-2 py-0.5 text-[11px] font-mono rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/30" title="Your isolated private space bearer token">Space: --</span>
+          <span class="font-display font-bold text-2xl tracking-tight text-[#F2F5F2]">Saha</span>
+          <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-[#72D6B3]/10 text-[#72D6B3] border border-[#72D6B3]/30">Persistent AI</span>
+          <span id="demoBadge" class="hidden px-2.5 py-0.5 text-xs font-semibold rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30">Demo Mode</span>
+          <span id="ownerBadge" class="px-2.5 py-0.5 text-[11px] font-mono rounded-full bg-[#19221F] text-[#95A7A0] border border-[#273631]" title="Your isolated private space bearer token">Space: --</span>
         </div>
-        <p class="text-xs sm:text-sm text-gray-400 mt-1 font-medium break-words">
-          <span class="text-emerald-400 font-semibold">Tagline:</span> Your work should never have to start over just because your AI does.
+        <p class="text-xs sm:text-sm text-[#95A7A0] mt-1 font-medium break-words">
+          <span class="text-[#72D6B3] font-semibold">Tagline:</span> Your work should never have to start over just because your AI does.
         </p>
       </div>
 
       <!-- Action & Controls Bar -->
       <div class="flex flex-wrap items-center gap-2 sm:gap-3 text-xs w-full lg:w-auto justify-start lg:justify-end">
         <!-- Approvals Pill -->
-        <button id="approvalsNavBtn" onclick="openApprovalsModal()" class="px-3 py-1.5 rounded-lg bg-gray-900 border border-gray-800 hover:border-gray-700 text-gray-300 hover:text-white transition flex items-center gap-1.5 font-medium">
+        <button id="approvalsNavBtn" onclick="openApprovalsModal()" class="px-3 py-1.5 rounded-lg bg-[#19221F] border border-[#273631] hover:border-amber-500/40 text-[#F2F5F2] hover:text-white transition flex items-center gap-1.5 font-medium text-xs">
           <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
           Approvals
           <span id="pendingApprovalsCount" class="hidden px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-black">0</span>
         </button>
 
         <!-- Privacy Egress Pill -->
-        <button onclick="openEgressModal()" class="px-3 py-1.5 rounded-lg bg-gray-900 border border-gray-800 hover:border-gray-700 text-gray-300 hover:text-white transition flex items-center gap-1.5 font-medium" title="Privacy ledger: Zero raw content stored">
-          <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+        <button onclick="openEgressModal()" class="px-3 py-1.5 rounded-lg bg-[#19221F] border border-[#273631] hover:border-[#72D6B3]/40 text-[#F2F5F2] hover:text-white transition flex items-center gap-1.5 font-medium text-xs" title="Privacy ledger: Zero raw content stored">
+          <svg class="w-3.5 h-3.5 text-[#72D6B3]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
           Privacy Ledger
         </button>
 
         <!-- Pair Link Button -->
-        <button onclick="openPairModal()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition flex items-center gap-1.5">
+        <button onclick="openPairModal()" class="px-3 py-1.5 rounded-lg bg-[#1E2B26] hover:bg-[#273832] border border-[#72D6B3]/35 text-[#72D6B3] hover:text-[#8AE0C2] font-medium transition flex items-center gap-1.5 text-xs shadow-sm">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
           Pair Device
         </button>
@@ -122,7 +141,7 @@
 
         <!-- Section Switcher in Sidebar (compact tab row on phones) -->
         <nav id="sectionNav" class="glass-panel rounded-2xl p-2 flex flex-row lg:flex-col gap-1.5 overflow-x-auto scrollbar-none" aria-label="Section Switcher">
-          <button id="tabTasks" onclick="switchSection('tasks')" class="nav-tab flex-1 lg:flex-initial flex items-center justify-center lg:justify-start gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition whitespace-nowrap bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+          <button id="tabTasks" onclick="switchSection('tasks')" class="nav-tab flex-1 lg:flex-initial flex items-center justify-center lg:justify-start gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition whitespace-nowrap bg-[#72D6B3]/15 text-[#72D6B3] border border-[#72D6B3]/40 shadow-sm">
             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
             <span>Tasks</span>
           </button>
@@ -145,19 +164,19 @@
         </nav>
 
         <!-- Watcher Status Chip in Sidebar -->
-        <div id="sidebarWatcherChip" class="glass-panel rounded-xl p-3 border border-gray-800 flex items-center gap-2.5 text-xs text-gray-300">
+        <div id="sidebarWatcherChip" class="glass-panel rounded-xl p-3 border border-[#273631] flex items-center gap-2.5 text-xs text-[#95A7A0]">
           <span class="relative flex h-2.5 w-2.5 flex-shrink-0">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#72D6B3] opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#72D6B3]"></span>
           </span>
-          <span id="sidebarWatcherStatusText" class="truncate font-medium">Watching, checks every 60s, auto-heals left 3</span>
+          <span id="sidebarWatcherStatusText" class="truncate font-medium text-[#F2F5F2]">Watching, checks every 60s, auto-heals left 3</span>
         </div>
 
         <!-- Tasks Ledger in Sidebar (Always present in DOM; active by default) -->
-        <div id="tasksSidebarCard" class="glass-panel rounded-2xl p-4">
-          <div class="flex items-center justify-between pb-3 border-b border-gray-800">
-            <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Tasks Ledger</h3>
-            <span id="taskCountBadge" class="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full font-mono">0</span>
+        <div id="tasksSidebarCard" class="glass-panel rounded-2xl p-4 border border-[#273631]">
+          <div class="flex items-center justify-between pb-3 border-b border-[#273631]">
+            <h3 class="text-xs font-semibold text-[#95A7A0] uppercase tracking-wider">Tasks Ledger</h3>
+            <span id="taskCountBadge" class="text-xs bg-[#141C19] text-[#72D6B3] border border-[#273631] px-2.5 py-0.5 rounded-full font-mono font-medium">0</span>
           </div>
           <div id="tasksList" class="mt-3 space-y-2 max-h-[600px] overflow-y-auto pr-1">
             <div class="text-xs text-gray-500 py-4 text-center">Loading tasks ledger...</div>
@@ -181,15 +200,15 @@
         <div id="sectionTasks" class="space-y-6">
 
           <!-- Goal Input & Plan Synthesis Section -->
-          <section id="goalSection" class="glass-panel rounded-2xl p-4 sm:p-6 space-y-4 glow-emerald">
-            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-gray-800/80 pb-3">
+          <section id="goalSection" class="glass-panel rounded-2xl p-5 sm:p-6 space-y-4 glow-jade border border-[#273631]">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-[#273631] pb-3.5">
               <div>
-                <h2 class="text-base sm:text-lg font-bold text-white flex items-center gap-2 font-display">
+                <h2 class="text-base sm:text-lg font-bold text-[#F2F5F2] flex items-center gap-2 font-display">
                   <span>Autonomous Task Orchestration & Plan Synthesis</span>
                 </h2>
-                <p class="text-xs text-gray-400 mt-0.5">Dual-model architecture: Nemotron Ultra-550B generates deterministic multi-step plans with verification probes.</p>
+                <p class="text-xs text-[#95A7A0] mt-0.5 leading-relaxed">Dual-model architecture: Nemotron Ultra-550B generates deterministic multi-step plans with verification probes.</p>
               </div>
-              <span class="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+              <span class="text-[11px] font-mono text-[#72D6B3] bg-[#72D6B3]/10 px-2.5 py-1 rounded-full border border-[#72D6B3]/30 font-semibold">
                 PLANNER Active
               </span>
             </div>
@@ -200,14 +219,14 @@
                 id="goalInput" 
                 type="text" 
                 placeholder="What should Saha accomplish? (e.g. Write a summary, check network connectivity...)"
-                class="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-emerald-500 transition shadow-inner font-sans"
+                class="flex-1 bg-[#121B18] border border-[#273631] rounded-xl px-4 py-2.5 text-sm text-[#F2F5F2] placeholder-[#657871] focus:outline-none focus:border-[#72D6B3] transition shadow-inner font-sans"
                 maxlength="300"
                 onkeydown="if(event.key === 'Enter') createTask()"
               />
               <button 
                 id="createTaskBtn"
                 onclick="createTask()" 
-                class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-black font-bold text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 whitespace-nowrap font-display"
+                class="px-5 py-2.5 rounded-xl bg-[#72D6B3] hover:bg-[#8AE0C2] text-[#101715] font-bold text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-[#72D6B3]/20 whitespace-nowrap font-display"
               >
                 <span>Plan Task</span>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
@@ -216,48 +235,48 @@
 
             <!-- Quick Demo Goal Chips -->
             <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 pt-1 text-[11px]">
-              <span class="text-gray-500 font-semibold mr-1">Demo seeds:</span>
-              <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg border border-gray-700 transition text-left max-w-full break-words">
+              <span class="text-[#95A7A0] font-semibold mr-1">Examples:</span>
+              <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-[#141C19] hover:bg-[#1B2723] text-[#95A7A0] hover:text-[#F2F5F2] rounded-lg border border-[#273631] transition text-left max-w-full break-words">
                 Create Hyderabad facts files, combine summary, verify reachability
               </button>
-              <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg border border-gray-700 transition text-left max-w-full break-words">
+              <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-[#141C19] hover:bg-[#1B2723] text-[#95A7A0] hover:text-[#F2F5F2] rounded-lg border border-[#273631] transition text-left max-w-full break-words">
                 Write state verification report and test connectivity
               </button>
-              <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg border border-gray-700 transition text-left max-w-full break-words">
+              <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-[#141C19] hover:bg-[#1B2723] text-[#95A7A0] hover:text-[#F2F5F2] rounded-lg border border-[#273631] transition text-left max-w-full break-words">
                 Synthesize ledger architecture notes and verify hashes
               </button>
             </div>
           </section>
 
           <!-- Selected Task Card -->
-          <div id="taskDetailCard" class="glass-panel rounded-2xl p-6 hidden space-y-5">
+          <div id="taskDetailCard" class="glass-panel rounded-2xl p-6 hidden space-y-5 border border-[#273631]">
             <!-- Task Header -->
-            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-gray-800">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[#273631]">
               <div>
                 <div class="flex items-center gap-2">
-                  <span id="taskStatusPill" class="px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-gray-800 text-gray-300">
+                  <span id="taskStatusPill" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#141C19] text-[#95A7A0] border border-[#273631] shadow-sm">
                     Planning
                   </span>
-                  <span id="taskIdLabel" class="text-xs text-gray-400 font-mono break-all">Task ID: --</span>
+                  <span id="taskIdLabel" class="text-xs text-[#95A7A0] font-mono break-all">Task ID: --</span>
                 </div>
-                <h2 id="taskGoalLabel" class="text-lg font-bold text-white mt-1.5 font-display break-words">--</h2>
+                <h2 id="taskGoalLabel" class="text-lg sm:text-xl font-bold text-[#F2F5F2] mt-1.5 font-display break-words tracking-tight">--</h2>
               </div>
 
               <!-- Task Actions -->
               <div class="flex flex-wrap items-center gap-2">
-                <button id="saveAsRoutineBtn" onclick="openSaveAsRoutineModal()" class="hidden px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-md">
+                <button id="saveAsRoutineBtn" onclick="openSaveAsRoutineModal()" class="hidden px-3.5 py-2 bg-[#1B2723] hover:bg-[#23332E] border border-[#72D6B3]/35 text-[#72D6B3] text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-sm">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
                   Save as Routine
                 </button>
-                <button id="runTaskBtn" onclick="runActiveTask()" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-md">
+                <button id="runTaskBtn" onclick="runActiveTask()" class="px-3.5 py-2 bg-[#141C19] hover:bg-[#1C2723] border border-[#72D6B3]/40 text-[#72D6B3] text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-sm">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                   Run Task
                 </button>
-                <button id="sabotageBtn" onclick="sabotageActiveTask()" class="px-3.5 py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-semibold rounded-lg transition flex items-center gap-1.5" title="Deletes artifact directly from disk without touching database">
+                <button id="sabotageBtn" onclick="sabotageActiveTask()" class="px-3.5 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-300 hover:text-red-200 text-xs font-semibold rounded-lg transition flex items-center gap-1.5" title="Deletes artifact directly from disk without touching database">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                   Simulate Drift
                 </button>
-                <button id="resumeBtn" onclick="resumeActiveTask()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-md">
+                <button id="resumeBtn" onclick="resumeActiveTask()" class="px-4 py-2 bg-[#72D6B3] hover:bg-[#8AE0C2] text-[#101715] text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-md shadow-[#72D6B3]/15">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                   Resume & Reconcile
                 </button>
@@ -265,7 +284,7 @@
             </div>
 
             <!-- Prominent Reality Drift Banner -->
-            <div id="driftBanner" class="hidden rounded-xl border border-amber-500/50 bg-amber-950/30 p-4 glow-amber space-y-3">
+            <div id="driftBanner" class="hidden rounded-xl border border-amber-500/40 bg-amber-950/25 p-4 glow-amber space-y-3">
               <div class="flex items-start justify-between">
                 <div class="flex items-center gap-2.5 text-amber-400 font-bold text-sm">
                   <svg class="w-5 h-5 text-amber-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
@@ -273,49 +292,49 @@
                 </div>
                 <span class="text-xs font-mono text-amber-300/80 bg-amber-500/10 px-2 py-0.5 rounded">FAST Model Active</span>
               </div>
-              <div class="bg-gray-900/80 rounded-lg p-3 border border-amber-500/20 text-xs space-y-1.5">
-                <div class="text-gray-400 font-semibold uppercase text-[10px] tracking-wider">Fast Auditor Explanation (Nano-30B):</div>
+              <div class="bg-[#101715]/90 rounded-lg p-3 border border-amber-500/20 text-xs space-y-1.5">
+                <div class="text-[#95A7A0] font-semibold uppercase text-[10px] tracking-wider">Fast Auditor Explanation (Nano-30B):</div>
                 <p id="driftExplanation" class="text-amber-200 text-sm font-medium italic">--</p>
-                <div id="driftDetails" class="text-gray-400 font-mono text-[11px] pt-1 border-t border-gray-800">--</div>
+                <div id="driftDetails" class="text-[#95A7A0] font-mono text-[11px] pt-1 border-t border-[#25352F]">--</div>
               </div>
             </div>
 
             <!-- Policy Blocked Alert (if any steps are blocked) -->
-            <div id="policyBlockedAlert" class="hidden rounded-xl border border-purple-500/50 bg-purple-950/30 p-4 space-y-2">
+            <div id="policyBlockedAlert" class="hidden rounded-xl border border-amber-500/40 bg-amber-950/25 p-4 space-y-2 glow-amber">
               <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2 text-purple-300 font-bold text-sm">
-                  <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                <div class="flex items-center gap-2 text-amber-300 font-bold text-sm">
+                  <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                   <span>EXECUTION PAUSED: ACTION BLOCKED BY POLICY</span>
                 </div>
-                <button onclick="openApprovalsModal()" class="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-semibold transition">
+                <button onclick="openApprovalsModal()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black rounded-lg text-xs font-bold transition shadow-sm">
                   Review & Approve
                 </button>
               </div>
-              <p class="text-xs text-purple-200">
+              <p class="text-xs text-amber-200/90 leading-relaxed">
                 One or more steps attempted an action outside your space's security policy. Review pending approvals to allow or deny.
               </p>
             </div>
 
             
             <!-- Task Output Panel (Show text produced by read_file in completed task) -->
-            <div id="taskOutputPanel" class="hidden rounded-xl border border-emerald-500/40 bg-gray-950/90 p-4 space-y-3 glow-emerald">
-              <div class="flex items-center justify-between pb-2 border-b border-gray-800/80">
+            <div id="taskOutputPanel" class="hidden rounded-2xl border border-[#72D6B3]/40 bg-[#141C19] p-5 space-y-3.5 shadow-lg shadow-[#72D6B3]/5">
+              <div class="flex items-center justify-between pb-2.5 border-b border-[#273631]">
                 <div class="flex items-center gap-2">
-                  <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
-                  <span class="text-xs font-bold uppercase tracking-wider text-emerald-400 font-display">Task Output</span>
-                  <span id="taskOutputPathBadge" class="text-[11px] font-mono text-gray-300 bg-gray-900 px-2 py-0.5 rounded border border-gray-800">--</span>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#72D6B3] shadow-sm shadow-[#72D6B3]/50"></div>
+                  <span class="text-xs sm:text-sm font-bold uppercase tracking-wider text-[#72D6B3] font-display">Task Output</span>
+                  <span id="taskOutputPathBadge" class="text-xs font-mono text-[#F2F5F2] bg-[#0E1513] px-2.5 py-1 rounded-md border border-[#273631]">--</span>
                 </div>
-                <button onclick="copyTaskOutput()" id="copyTaskOutputBtn" class="px-2.5 py-1 bg-gray-900 hover:bg-gray-800 border border-gray-700 text-gray-300 hover:text-white rounded-lg text-xs font-mono transition flex items-center gap-1.5 shadow-sm">
+                <button onclick="copyTaskOutput()" id="copyTaskOutputBtn" class="px-3 py-1 bg-[#19221F] hover:bg-[#202E29] border border-[#273631] text-[#F2F5F2] hover:text-white rounded-lg text-xs font-mono transition flex items-center gap-1.5 shadow-sm">
                   <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
                   <span>Copy</span>
                 </button>
               </div>
 
               <!-- Output Content Pre -->
-              <pre id="taskOutputContent" class="text-xs font-mono text-gray-100 bg-gray-900/90 p-3.5 rounded-lg border border-gray-800/90 overflow-x-auto whitespace-pre-wrap max-h-80 leading-relaxed selection:bg-emerald-500 selection:text-black">--</pre>
+              <pre id="taskOutputContent" class="text-xs sm:text-[13px] font-mono text-[#F2F5F2] bg-[#0A110F] p-4 sm:p-5 rounded-xl border border-[#22332D] overflow-x-auto whitespace-pre-wrap max-h-96 leading-relaxed selection:bg-[#72D6B3] selection:text-[#101715] tracking-normal">--</pre>
 
               <!-- Footer with step context and bytes read -->
-              <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-gray-500 pt-1">
+              <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-[#95A7A0] pt-1">
                 <span id="taskOutputStepLabel">Output from read_file step</span>
                 <span id="taskOutputBytesLabel">0 bytes read</span>
               </div>
@@ -324,8 +343,8 @@
             <!-- Steps Timeline -->
             <div class="space-y-3">
               <div class="flex items-center justify-between">
-                <h3 class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Audit Timeline & Verification Probes</h3>
-                <span id="timelineStats" class="text-xs text-gray-500 font-mono">0 steps</span>
+                <h3 class="text-xs font-semibold text-[#95A7A0] uppercase tracking-wider">Audit Timeline & Verification Probes</h3>
+                <span id="timelineStats" class="text-xs text-[#95A7A0] font-mono">0 steps</span>
               </div>
 
               <div id="stepsTimeline" class="space-y-3">
@@ -336,12 +355,12 @@
           </div>
 
           <!-- Empty State -->
-          <div id="emptyTaskPlaceholder" class="glass-panel rounded-2xl p-12 text-center space-y-3">
-            <div class="w-12 h-12 rounded-full bg-gray-900 mx-auto flex items-center justify-center text-gray-500">
+          <div id="emptyTaskPlaceholder" class="glass-panel rounded-2xl p-12 text-center space-y-3 border border-[#273631]">
+            <div class="w-12 h-12 rounded-full bg-[#141C19] border border-[#273631] mx-auto flex items-center justify-center text-[#95A7A0]">
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
             </div>
-            <h3 class="text-sm font-semibold text-gray-300">No Task Selected</h3>
-            <p class="text-xs text-gray-500 max-w-sm mx-auto">Select an existing task from the ledger on the left, or input a new goal above to generate an execution plan.</p>
+            <h3 class="text-sm font-semibold text-[#F2F5F2]">No Task Selected</h3>
+            <p class="text-xs text-[#95A7A0] max-w-sm mx-auto leading-relaxed">Select an existing task from the ledger on the left, or input a new goal above to generate an execution plan.</p>
           </div>
 
         </div>
@@ -798,6 +817,7 @@
         const token = hash.replace("#pair=", "").trim();
         if (token && /^[a-fA-F0-9]{32,64}$/.test(token)) {
           localStorage.setItem("saha_owner_token", token);
+          localStorage.setItem("saha_is_paired", "1");
           cachedOwnerToken = token;
           history.replaceState(null, "", window.location.pathname + window.location.search);
           updateOwnerBadge();
@@ -805,12 +825,24 @@
         }
       }
 
+      if (localStorage.getItem("saha_is_paired") === "1") {
+        const token = localStorage.getItem("saha_owner_token");
+        if (token && /^[a-fA-F0-9]{32,64}$/.test(token)) {
+          cachedOwnerToken = token;
+          updateOwnerBadge();
+          return token;
+        }
+      }
+
+      // Check existing anonymous/private token in localStorage
       let token = localStorage.getItem("saha_owner_token");
-      if (!token) {
+      if (!token || token === "default-anonymous-owner" || !/^[a-fA-F0-9]{32,64}$/.test(token)) {
+        // Generate a cryptographically random 128-bit hex token (16 bytes = 32 hex chars)
         const bytes = new Uint8Array(16);
         window.crypto.getRandomValues(bytes);
         token = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
         localStorage.setItem("saha_owner_token", token);
+        localStorage.removeItem("saha_is_paired");
       }
       cachedOwnerToken = token;
       updateOwnerBadge();
@@ -819,9 +851,10 @@
 
     function updateOwnerBadge() {
       const token = cachedOwnerToken || localStorage.getItem("saha_owner_token") || "";
+      const isPaired = localStorage.getItem("saha_is_paired") === "1";
       const badge = document.getElementById("ownerBadge");
       if (badge && token) {
-        badge.innerText = `Space: ${token.substring(0, 8)}...`;
+        badge.innerText = `${isPaired ? "Paired" : "Space"}: ${token.substring(0, 8)}...`;
       }
     }
 
@@ -862,12 +895,12 @@
         
         if (s === sectionId) {
           if (tabEl) {
-            tabEl.className = "nav-tab flex-1 lg:flex-initial flex items-center justify-center lg:justify-start gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition whitespace-nowrap bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
+            tabEl.className = "nav-tab flex-1 lg:flex-initial flex items-center justify-center lg:justify-start gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition whitespace-nowrap bg-[#72D6B3]/15 text-[#72D6B3] border border-[#72D6B3]/40 shadow-sm";
           }
           if (viewEl) viewEl.classList.remove("hidden");
         } else {
           if (tabEl) {
-            tabEl.className = "nav-tab flex-1 lg:flex-initial flex items-center justify-center lg:justify-start gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition whitespace-nowrap text-gray-400 hover:text-white hover:bg-gray-800/60 border border-transparent";
+            tabEl.className = "nav-tab flex-1 lg:flex-initial flex items-center justify-center lg:justify-start gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition whitespace-nowrap text-[#95A7A0] hover:text-[#F2F5F2] hover:bg-[#19221F] border border-transparent";
           }
           if (viewEl) viewEl.classList.add("hidden");
         }
@@ -1076,17 +1109,17 @@
           // 4. Approval Pending (purple/amber)
           if (item.type === 'approval_pending') {
             return `
-              <div class="p-3.5 rounded-xl border border-purple-500/30 bg-purple-950/20 text-purple-200 space-y-2">
+              <div class="p-3.5 rounded-xl border border-amber-500/30 bg-amber-950/20 text-amber-200 space-y-2">
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-2">
-                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/40">Approval Pending</span>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">Approval Pending</span>
                     <span class="text-xs font-semibold text-gray-200">Requires tool: <code class="font-mono">${item.tool}</code></span>
                   </div>
                   <span class="text-[11px] font-mono text-gray-400">${timeStr}</span>
                 </div>
-                <div class="text-xs text-purple-200/90">${item.reason || 'Action requires authorization outside default policy.'}</div>
+                <div class="text-xs text-amber-200/90">${item.reason || 'Action requires authorization outside default policy.'}</div>
                 <div class="flex justify-end gap-3 pt-1">
-                  <button onclick="openApprovalsModal()" class="text-xs font-semibold text-purple-400 hover:text-purple-300 underline underline-offset-2">
+                  <button onclick="openApprovalsModal()" class="text-xs font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-2">
                     Review Approval &rarr;
                   </button>
                   ${item.task_id ? `
@@ -1620,7 +1653,7 @@
         const res = await sahaFetch("/tasks");
         const data = await res.json();
         const list = document.getElementById("tasksList");
-        const tasks = data.tasks || [];
+        const tasks = (data.tasks || []).filter(t => !t.id.startsWith("demo-task-"));
         document.getElementById("taskCountBadge").innerText = tasks.length;
 
         if (tasks.length === 0) {
@@ -1631,28 +1664,28 @@
         list.innerHTML = tasks.map(t => {
           const isSelected = t.id === activeTaskId;
           const statusColors = {
-            complete: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-            running: 'bg-blue-500/10 text-blue-400 border-blue-500/30 animate-pulse',
-            planning: 'bg-gray-800 text-gray-300 border-gray-700',
-            failed: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
-            paused: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+            complete: 'bg-[#72D6B3]/15 text-[#72D6B3] border-[#72D6B3]/40',
+            running: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40 animate-pulse',
+            planning: 'bg-[#101715] text-[#95A7A0] border-[#273631]',
+            failed: 'bg-red-500/15 text-red-300 border-red-500/35',
+            paused: 'bg-amber-500/15 text-amber-300 border-amber-500/40',
           };
-          const pill = statusColors[t.status] || 'bg-gray-800 text-gray-300';
+          const pill = statusColors[t.status] || 'bg-[#101715] text-[#95A7A0] border-[#273631]';
 
           return `
-            <div onclick="selectTask('${t.id}')" class="p-3 rounded-xl border transition cursor-pointer ${isSelected ? 'bg-gray-800/90 border-emerald-500/50 shadow-md' : 'bg-gray-900/60 border-gray-800 hover:border-gray-700'}">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-[10px] font-mono text-gray-500">${t.id.substring(0, 8)}...</span>
+            <div onclick="selectTask('${t.id}')" class="p-3.5 rounded-xl border transition cursor-pointer space-y-1.5 ${isSelected ? 'bg-[#1B2723] border-[#72D6B3]/60 shadow-md ring-1 ring-[#72D6B3]/30' : 'bg-[#141C19] border-[#25352F] hover:border-[#72D6B3]/40'}">
+              <div class="flex items-center justify-between gap-1">
+                <span class="text-[10px] font-mono text-[#95A7A0]">${t.id.substring(0, 8)}...</span>
                 <div class="flex items-center gap-1.5">
-                  ${t.needs_attention ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">Needs Attention</span>' : ''}
+                  ${t.needs_attention ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/40">Needs Attention</span>' : ''}
                   <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${pill}">${t.status}</span>
                 </div>
               </div>
-              <div class="text-xs text-gray-200 font-medium line-clamp-2">${t.goal}</div>
-              <div class="flex items-center justify-between mt-2 pt-1 border-t border-gray-800/60">
-                <span class="text-[10px] text-gray-500 font-mono">${new Date(t.created_at).toLocaleTimeString()}</span>
+              <div class="text-xs text-[#F2F5F2] font-medium line-clamp-2 leading-snug">${t.goal}</div>
+              <div class="flex items-center justify-between mt-1 pt-1.5 border-t border-[#23312C]">
+                <span class="text-[10px] text-[#95A7A0] font-mono">${new Date(t.created_at).toLocaleTimeString()}</span>
                 ${t.needs_attention ? `
-                  <button onclick="event.stopPropagation(); resumeSpecificTask('${t.id}')" class="px-2 py-0.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-[10px] font-semibold transition shadow-sm">
+                  <button onclick="event.stopPropagation(); resumeSpecificTask('${t.id}')" class="px-2 py-0.5 bg-amber-500 hover:bg-amber-400 text-black rounded text-[10px] font-bold transition shadow-sm">
                     Resume
                   </button>
                 ` : ''}
@@ -1701,11 +1734,11 @@
         document.getElementById("taskGoalLabel").innerText = task.goal;
         
         const statusColors = {
-          complete: 'bg-emerald-500 text-black',
-          running: 'bg-blue-500 text-white animate-pulse',
-          planning: 'bg-gray-700 text-white',
-          failed: 'bg-rose-600 text-white',
-          paused: 'bg-amber-500 text-black',
+          complete: 'bg-[#72D6B3] text-[#101715] font-bold shadow-sm',
+          running: 'bg-cyan-500 text-[#101715] font-bold animate-pulse',
+          planning: 'bg-[#141C19] text-[#95A7A0] border border-[#273631] font-bold',
+          failed: 'bg-red-500/20 text-red-200 border border-red-500/40 font-bold',
+          paused: 'bg-amber-500 text-[#101715] font-bold',
         };
         const pillEl = document.getElementById("taskStatusPill");
         pillEl.className = `px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${statusColors[task.status] || 'bg-gray-800 text-gray-300'}`;
@@ -1743,18 +1776,24 @@
         }
 
         
-        // Task Output Panel: Show actual text produced by read_file step in completed task
+        // Task Output Panel: Show actual text produced by read_file step in selected task
         const outputPanel = document.getElementById("taskOutputPanel");
         if (outputPanel) {
-          const isComplete = task.status === 'complete' || data.is_complete;
-          const readSteps = steps.filter(s => 
+          let readSteps = steps.filter(s => 
             s.tool === 'read_file' && 
             s.status !== 'superseded' && 
             s.result && 
             typeof s.result.content === 'string'
           );
+          if (readSteps.length === 0) {
+            readSteps = steps.filter(s => 
+              s.tool === 'read_file' && 
+              s.result && 
+              typeof s.result.content === 'string'
+            );
+          }
 
-          if (isComplete && readSteps.length > 0) {
+          if (readSteps.length > 0) {
             outputPanel.classList.remove("hidden");
             if (readSteps.length === 1) {
               const primary = readSteps[0];
@@ -1789,17 +1828,17 @@
         const timeline = document.getElementById("stepsTimeline");
         timeline.innerHTML = steps.map(s => {
           const badgeStyles = {
-            verified:   'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-            running:    'bg-blue-500/10 text-blue-400 border-blue-500/30 animate-pulse',
-            pending:    'bg-gray-800/80 text-gray-400 border-gray-700',
-            drifted:    'bg-amber-500/20 text-amber-300 border-amber-500/50',
-            superseded: 'bg-gray-900 text-gray-500 border-gray-800 opacity-60 line-through-title',
-            blocked:    'bg-purple-500/20 text-purple-300 border-purple-500/50',
-            failed:     'bg-rose-500/20 text-rose-300 border-rose-500/50',
+            verified:   'bg-[#72D6B3]/15 text-[#72D6B3] border-[#72D6B3]/40 font-bold uppercase',
+            running:    'bg-cyan-500/15 text-cyan-300 border-cyan-500/40 font-bold uppercase animate-pulse',
+            pending:    'bg-[#101715] text-[#95A7A0] border-[#25352F] font-bold uppercase',
+            drifted:    'bg-amber-500/20 text-amber-300 border-amber-500/50 font-bold uppercase',
+            superseded: 'bg-[#101715] text-[#657871] border-[#202D28] opacity-60 line-through-title font-bold uppercase',
+            blocked:    'bg-amber-500/15 text-amber-300 border-amber-500/40 font-bold uppercase',
+            failed:     'bg-red-500/15 text-red-300 border-red-500/35 font-bold uppercase',
           };
-          const badgeStyle = badgeStyles[s.status] || 'bg-gray-800 text-gray-300 border-gray-700';
+          const badgeStyle = badgeStyles[s.status] || 'bg-[#101715] text-[#95A7A0] border-[#25352F] font-bold uppercase';
 
-          const modelHandled = s.result && s.result.model_used ? s.result.model_used : (s.status === 'verified' ? 'nvidia/nemotron-3-super-120b-a12b' : 'PLANNER');
+          const modelHandled = s.result && s.result.model_used ? s.result.model_used : (s.status === 'verified' ? 'System / Verifier' : 'PLANNER');
 
           // Check for auto-healed drift event on this step
           const healedDrift = driftEvents.find(d => d.step_id === s.id && d.auto_healed);
@@ -1808,36 +1847,36 @@
             const healedDate = new Date(healedDrift.healed_at || healedDrift.detected_at);
             const timeStr = healedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             autoHealedBadge = `
-              <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs font-medium">
-                <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+              <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#72D6B3]/10 border border-[#72D6B3]/35 text-[#72D6B3] text-xs font-medium">
+                <svg class="w-3.5 h-3.5 text-[#72D6B3]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
                 <span>Auto-healed at ${timeStr}</span>
               </div>
             `;
           }
 
           return `
-            <div class="p-4 rounded-xl border bg-gray-900/40 border-gray-800 space-y-2.5">
+            <div class="p-4 rounded-xl border bg-[#141C19] border-[#25352F] space-y-3 hover:border-[#2F423A] transition">
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div class="flex items-center gap-2">
-                  <span class="text-xs font-mono text-gray-500">Step ${s.idx || s.seq}</span>
-                  <span class="text-xs font-bold text-gray-200">${s.intent}</span>
+                  <span class="text-xs font-mono text-[#95A7A0]">Step ${s.idx || s.seq}</span>
+                  <span class="text-xs font-bold text-[#F2F5F2]">${s.intent}</span>
                 </div>
                 <div class="flex items-center gap-2">
                   ${autoHealedBadge}
-                  <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${badgeStyle}">
+                  <span class="px-2.5 py-0.5 rounded text-[10px] tracking-wider border ${badgeStyle}">
                     ${s.status}
                   </span>
                 </div>
               </div>
 
               <!-- Tool & Command/Payload context -->
-              <div class="bg-gray-950/90 rounded-lg p-2.5 border border-gray-800/80 space-y-1.5 text-xs font-mono">
-                <div class="flex items-center justify-between text-gray-400">
-                  <span>Tool: <strong class="text-emerald-400 font-semibold">${s.tool}</strong></span>
-                  <span class="text-[10px] text-gray-500 truncate max-w-[200px]" title="${modelHandled}">Model: ${modelHandled.split('/').pop()}</span>
+              <div class="bg-[#0E1513] rounded-lg p-3 border border-[#202E28] space-y-1.5 text-xs font-mono">
+                <div class="flex items-center justify-between text-[#95A7A0]">
+                  <span>Tool: <strong class="text-[#72D6B3] font-semibold">${s.tool}</strong></span>
+                  <span class="text-[10px] text-[#95A7A0] truncate max-w-[200px]" title="${modelHandled}">Model: ${modelHandled.split('/').pop()}</span>
                 </div>
                 ${s.args && Object.keys(s.args).length > 0 ? `
-                  <div class="text-gray-300 break-all text-[11px] bg-gray-900/70 p-2 rounded">
+                  <div class="text-[#E2E8E4] break-all text-[11px] bg-[#141C19] p-2.5 rounded border border-[#202E28]">
                     ${JSON.stringify(s.args)}
                   </div>
                 ` : ''}
@@ -1846,45 +1885,45 @@
               <!-- Verification Probes & Outcomes -->
               
               ${s.tool === 'read_file' && s.result && typeof s.result.content === 'string' ? `
-                <div class="space-y-1.5 text-xs bg-gray-950/80 border border-gray-800 rounded-lg p-2.5">
-                  <div class="flex items-center justify-between text-gray-400 font-mono text-[11px]">
-                    <span class="text-emerald-400 font-semibold flex items-center gap-1.5">
-                      <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                <div class="space-y-1.5 text-xs bg-[#0E1513] border border-[#202E28] rounded-lg p-3">
+                  <div class="flex items-center justify-between text-[#95A7A0] font-mono text-[11px]">
+                    <span class="text-[#72D6B3] font-semibold flex items-center gap-1.5">
+                      <svg class="w-3.5 h-3.5 text-[#72D6B3]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                       Read Content (${s.result.path || (s.args && s.args.path) || 'file'})
                     </span>
                     <span>${(s.result.bytes_read !== undefined ? s.result.bytes_read : s.result.content.length).toLocaleString()} bytes</span>
                   </div>
-                  <pre class="text-gray-200 font-mono text-[11px] bg-gray-900/90 p-2.5 rounded border border-gray-800/80 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">${s.result.content}</pre>
+                  <pre class="text-[#F2F5F2] font-mono text-[11px] bg-[#0A110F] p-3 rounded-lg border border-[#22332D] whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">${s.result.content}</pre>
                 </div>
               ` : ''}
 
               ${s.status === 'verified' ? `
-                <div class="flex items-center gap-1.5 text-xs text-emerald-400 font-medium bg-emerald-950/20 border border-emerald-500/20 rounded-lg p-2">
-                  <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                  <span>Verified by physical reality probe: Artifact hash & filesystem check passed</span>
+                <div class="flex items-center gap-1.5 text-xs text-[#72D6B3] font-medium bg-[#72D6B3]/10 border border-[#72D6B3]/30 rounded-lg p-2.5">
+                  <svg class="w-4 h-4 text-[#72D6B3]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                  <span>Verified by physical reality probe${s.probe && s.probe.probe_type ? ' (' + s.probe.probe_type + ')' : ''}</span>
                 </div>
               ` : ''}
 
               ${s.status === 'drifted' ? `
-                <div class="space-y-1.5 text-xs bg-amber-950/30 border border-amber-500/40 rounded-lg p-2.5">
+                <div class="space-y-1.5 text-xs bg-amber-950/20 border border-amber-500/40 rounded-lg p-2.5">
                   <div class="flex items-center gap-1.5 text-amber-300 font-bold">
                     <svg class="w-4 h-4 text-amber-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
                     <span>Probe Failed: ${s.drift_reason || 'Artifact missing or altered'}</span>
                   </div>
-                  ${s.resolved_by ? `<div class="text-[11px] text-gray-400">Reconciled and replaced by step: <code class="text-emerald-400">${s.resolved_by.substring(0,8)}</code></div>` : ''}
+                  ${s.resolved_by ? `<div class="text-[11px] text-[#95A7A0]">Reconciled and replaced by step: <code class="text-[#72D6B3]">${s.resolved_by.substring(0,8)}</code></div>` : ''}
                 </div>
               ` : ''}
 
               ${s.status === 'blocked' ? `
-                <div class="flex items-center justify-between text-xs bg-purple-950/30 border border-purple-500/40 rounded-lg p-2 text-purple-300">
+                <div class="flex items-center justify-between text-xs bg-amber-950/20 border border-amber-500/40 rounded-lg p-2.5 text-amber-300">
                   <span>Blocked: ${s.block_reason || 'Requires manual approval'}</span>
-                  <button onclick="openApprovalsModal()" class="px-2 py-0.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-[10px] font-bold">Review</button>
+                  <button onclick="openApprovalsModal()" class="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-black rounded text-[10px] font-bold shadow-sm">Review</button>
                 </div>
               ` : ''}
 
               ${s.status === 'superseded' ? `
-                <div class="text-[11px] text-gray-500 italic bg-gray-950/40 rounded p-1.5 border border-gray-900">
-                  Superseded in append-only ledger by reconciliation step: <span class="font-mono">${s.superseded_by ? s.superseded_by.substring(0,8) : '--'}</span>
+                <div class="text-[11px] text-[#657871] italic bg-[#0E1513] rounded p-2 border border-[#202D28]">
+                  Superseded in append-only ledger by reconciliation step: <span class="font-mono text-[#95A7A0]">${s.superseded_by ? s.superseded_by.substring(0,8) : '--'}</span>
                 </div>
               ` : ''}
             </div>
@@ -2204,6 +2243,7 @@
           return;
         }
         localStorage.removeItem("saha_owner_token");
+        localStorage.removeItem("saha_is_paired");
         cachedOwnerToken = null;
         alert("Private space deleted. Generating a fresh bearer token.");
         window.location.reload();

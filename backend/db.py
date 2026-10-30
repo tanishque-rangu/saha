@@ -14,7 +14,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +106,94 @@ def hash_owner_token(token: Optional[str]) -> str:
 
 DEFAULT_ANONYMOUS_TOKEN = "default-anonymous-owner"
 DEFAULT_OWNER_ID = hash_owner_token(DEFAULT_ANONYMOUS_TOKEN)
+
+
+def resolve_owner_id(raw_token: str, db_path: Optional[str] = None) -> Tuple[str, str]:
+    """Resolve raw owner token to (owner_id, status).
+
+    Returns (owner_id, status) where status is 'active' or 'revoked'.
+    If the token has not been mapped or rotated, defaults to (hash_owner_token(raw_token), 'active').
+    """
+    init_db(db_path)
+    token_hash = hash_owner_token(raw_token)
+    with get_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT owner_id, status FROM owner_tokens WHERE token_hash = ?",
+            (token_hash,),
+        ).fetchone()
+        if row:
+            return row["owner_id"], row["status"]
+    return token_hash, "active"
+
+
+def revoke_owner_token(raw_token: str, db_path: Optional[str] = None) -> str:
+    """Revoke an owner token without deleting any tasks or files."""
+    init_db(db_path)
+    now = utc_now_iso()
+    token_hash = hash_owner_token(raw_token)
+    with get_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT owner_id FROM owner_tokens WHERE token_hash = ?",
+            (token_hash,),
+        ).fetchone()
+        owner_id = row["owner_id"] if row else token_hash
+        conn.execute(
+            """
+            INSERT INTO owner_tokens (token_hash, owner_id, status, created_at, revoked_at)
+            VALUES (?, ?, 'revoked', ?, ?)
+            ON CONFLICT(token_hash) DO UPDATE SET status = 'revoked', revoked_at = ?
+            """,
+            (token_hash, owner_id, now, now, now),
+        )
+    return owner_id
+
+
+def rotate_owner_token(
+    old_token: str,
+    new_token: str,
+    db_path: Optional[str] = None,
+) -> Tuple[str, str]:
+    """Rotate an owner token to a new token while preserving all tasks, data, and workspace files.
+
+    Returns (owner_id, new_token).
+    Raises ValueError if old_token is already revoked or if tokens match.
+    """
+    init_db(db_path)
+    if not old_token or not new_token:
+        raise ValueError("Both old_token and new_token are required.")
+    if old_token.strip() == new_token.strip():
+        raise ValueError("new_token must be different from old_token.")
+
+    old_hash = hash_owner_token(old_token)
+    new_hash = hash_owner_token(new_token)
+    now = utc_now_iso()
+
+    with get_db(db_path) as conn:
+        row_old = conn.execute(
+            "SELECT owner_id, status FROM owner_tokens WHERE token_hash = ?",
+            (old_hash,),
+        ).fetchone()
+        if row_old and row_old["status"] == "revoked":
+            raise ValueError("Token has already been revoked.")
+        owner_id = row_old["owner_id"] if row_old else old_hash
+
+        conn.execute(
+            """
+            INSERT INTO owner_tokens (token_hash, owner_id, status, created_at, revoked_at)
+            VALUES (?, ?, 'revoked', ?, ?)
+            ON CONFLICT(token_hash) DO UPDATE SET status = 'revoked', revoked_at = ?
+            """,
+            (old_hash, owner_id, now, now, now),
+        )
+        conn.execute(
+            """
+            INSERT INTO owner_tokens (token_hash, owner_id, status, created_at, revoked_at)
+            VALUES (?, ?, 'active', ?, NULL)
+            ON CONFLICT(token_hash) DO UPDATE SET owner_id = ?, status = 'active', revoked_at = NULL
+            """,
+            (new_hash, owner_id, now, owner_id),
+        )
+    return owner_id, new_token.strip()
 
 
 def get_db_path(custom_path: Optional[str] = None) -> Path:
@@ -238,6 +326,14 @@ CREATE TABLE IF NOT EXISTS memories (
     last_used_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS owner_tokens (
+    token_hash TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'revoked')),
+    created_at TEXT NOT NULL,
+    revoked_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS skills (
     id TEXT PRIMARY KEY,
     owner_id TEXT NOT NULL,
@@ -269,6 +365,7 @@ CREATE INDEX IF NOT EXISTS idx_llm_calls_model ON llm_calls(model);
 CREATE INDEX IF NOT EXISTS idx_memories_owner_status ON memories(owner_id, status);
 CREATE INDEX IF NOT EXISTS idx_skills_owner ON skills(owner_id);
 CREATE INDEX IF NOT EXISTS idx_drift_events_owner ON drift_events(owner_id, detected_at);
+CREATE INDEX IF NOT EXISTS idx_owner_tokens_owner ON owner_tokens(owner_id);
 CREATE INDEX IF NOT EXISTS idx_skills_schedule ON skills(schedule_minutes, next_run_at);
 """
 
@@ -282,7 +379,7 @@ def init_db(db_path: Optional[str] = None) -> None:
         task_cols = {row["name"] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
         if "owner_id" not in task_cols:
             conn.execute("ALTER TABLE tasks ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'default';")
-
+        
         # 2. Migrate steps table columns if missing
         step_cols = {row["name"] for row in conn.execute("PRAGMA table_info(steps)").fetchall()}
         if "seq" not in step_cols:
@@ -609,6 +706,7 @@ def delete_owner_space(owner_id: str, db_path: Optional[str] = None) -> Dict[str
         task_rows = conn.execute("SELECT id FROM tasks WHERE owner_id = ?", (owner_id,)).fetchall()
         deleted_tasks = len(task_rows)
         conn.execute("DELETE FROM tasks WHERE owner_id = ?", (owner_id,))
+        conn.execute("DELETE FROM owner_tokens WHERE owner_id = ?", (owner_id,))
         conn.execute("DELETE FROM approvals WHERE owner_id = ?", (owner_id,))
         conn.execute("DELETE FROM policies WHERE owner_id = ?", (owner_id,))
         conn.execute("DELETE FROM llm_calls WHERE owner_id = ?", (owner_id,))

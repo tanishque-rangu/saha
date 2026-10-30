@@ -87,7 +87,7 @@ class Ledger:
         init_db(db_path)
         tid = task_id or str(uuid.uuid4())
         now = utc_now_iso()
-        effective_owner = DEFAULT_OWNER_ID if (not owner_id or owner_id == "default") else owner_id
+        effective_owner = owner_id if owner_id is not None else DEFAULT_OWNER_ID 
         with get_db(db_path) as conn:
             conn.execute(
                 """
@@ -106,8 +106,7 @@ class Ledger:
         init_db(db_path)
         with get_db(db_path) as conn:
             if owner_id:
-                effective_owner = DEFAULT_OWNER_ID if owner_id == "default" else owner_id
-                row = conn.execute("SELECT * FROM tasks WHERE id = ? AND owner_id = ?", (task_id, effective_owner)).fetchone()
+                row = conn.execute("SELECT * FROM tasks WHERE id = ? AND owner_id = ?", (task_id, owner_id)).fetchone()
             else:
                 row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
             if not row:
@@ -130,9 +129,8 @@ class Ledger:
             conditions = []
             params: List[Any] = []
             if owner_id:
-                effective_owner = DEFAULT_OWNER_ID if owner_id == "default" else owner_id
                 conditions.append("owner_id = ?")
-                params.append(effective_owner)
+                params.append(owner_id)
             if status:
                 conditions.append("status = ?")
                 params.append(status)

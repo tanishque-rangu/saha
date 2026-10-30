@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from backend.db import (
@@ -29,6 +30,9 @@ from backend.db import (
     get_llm_metrics,
     get_owner_egress_logs,
     hash_owner_token,
+    resolve_owner_id,
+    revoke_owner_token,
+    rotate_owner_token,
 )
 from backend.executor import is_public_mode, run_task
 from backend.ledger import Ledger
@@ -387,7 +391,13 @@ def get_owner_info(request: Request) -> Tuple[str, str]:
     else:
         if not raw_token:
             raw_token = "default-anonymous-owner"
-    owner_id = hash_owner_token(raw_token)
+    
+    owner_id, status = resolve_owner_id(raw_token)
+    if status == "revoked":
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: Owner token has been revoked.",
+        )
     return raw_token, owner_id
 
 
@@ -504,6 +514,55 @@ def delete_space(request: Request) -> Dict[str, Any]:
         "owner_id": owner_id,
         "deleted_tasks": db_res["deleted_tasks"],
         "message": "All workspace files, tasks, approvals, policies, and privacy ledger records deleted.",
+    }
+
+
+# -------------------------------------------------------------------------
+
+
+class RotateTokenRequest(BaseModel):
+    new_token: Optional[str] = Field(None, description="Optional new 32+ character bearer token. Generated if omitted.")
+
+
+@app.post("/owner/rotate")
+def rotate_token_endpoint(request: Request, payload: Optional[RotateTokenRequest] = None) -> Dict[str, Any]:
+    """Rotate the current owner bearer token to a new bearer token while preserving all tasks and files."""
+    raw_token, owner_id = get_owner_info(request)
+    new_token = (payload.new_token if payload and payload.new_token else None)
+    if not new_token:
+        new_token = secrets.token_hex(16)
+    new_token = new_token.strip()
+    if is_public_mode() and len(new_token) < 32:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid new_token: minimum 32 characters required in public mode.",
+        )
+    try:
+        resolved_owner_id, active_token = rotate_owner_token(raw_token, new_token)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    base_url = str(request.base_url).rstrip("/")
+    pair_url = f"{base_url}/#pair={active_token}"
+    return {
+        "status": "rotated",
+        "owner_id": resolved_owner_id,
+        "token_preview": f"{active_token[:8]}...",
+        "pair_link": pair_url,
+        "pair_url": pair_url,
+        "message": "Token rotated successfully. Previous token is now revoked. Saved tasks and workspace files remain intact.",
+    }
+
+
+@app.post("/owner/revoke")
+def revoke_token_endpoint(request: Request) -> Dict[str, Any]:
+    """Revoke the current owner token without deleting any tasks or workspace files."""
+    raw_token, owner_id = get_owner_info(request)
+    revoke_owner_token(raw_token)
+    return {
+        "status": "revoked",
+        "owner_id": owner_id,
+        "message": "Token has been revoked. All tasks and workspace files remain preserved in the database.",
     }
 
 
@@ -968,3 +1027,9 @@ def serve_index() -> FileResponse:
     if not index_file.exists():
         raise HTTPException(status_code=404, detail="Web UI not found")
     return FileResponse(index_file)
+
+
+# Mount static assets directory
+assets_dir = WEB_DIR / "assets"
+assets_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
