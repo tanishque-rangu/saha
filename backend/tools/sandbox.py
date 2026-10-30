@@ -23,9 +23,9 @@ def is_drive_relative(path_str: str) -> bool:
 
 
 def is_unc_path(path_str: str) -> bool:
-    r"""Check for UNC network paths like '\\server\share'."""
-    s = str(path_str).strip()
-    return s.startswith(r"\\") or s.startswith("//")
+    r"""Check for UNC network paths like '\\server\share' or '//server/share'."""
+    s = str(path_str).strip().strip("'").strip('"')
+    return s.startswith(r"\\") or s.startswith("//") or s.startswith(r"\\\\")
 
 
 def get_workspace_dir(task_id: Optional[str] = None, owner_id: Optional[str] = None) -> Path:

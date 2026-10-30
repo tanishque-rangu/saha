@@ -28,7 +28,7 @@ jobs:
 
       - name: Run pytest suite (Offline / No API Key required)
         run: |
-          pytest -v
+          pytest -v --tb=short -rf
 
   docker-build:
     name: Build Docker Container
@@ -54,6 +54,8 @@ jobs:
     name: Container Linux Verification & Persistence Test
     runs-on: ubuntu-latest
     needs: docker-build
+    env:
+      SAHA_RUN_CONTAINER_TESTS: "1"
 
     steps:
       - name: Checkout repository
@@ -66,8 +68,17 @@ jobs:
 
       - name: Run focused Linux container verification suite
         run: |
-          chmod +x scripts/verify_container.sh
-          ./scripts/verify_container.sh
+          chmod +x scripts/verify_container.sh docker-entrypoint.sh
+          ./scripts/verify_container.sh 2>&1 | tee container_verification.log
+
+      - name: Verify container check PASS markers
+        run: |
+          echo "=== Verifying Container Check PASS Markers ==="
+          grep -F "CONTAINER_CHECK non_default_port: PASS" container_verification.log
+          grep -F "CONTAINER_CHECK persistence: PASS" container_verification.log
+          grep -F "CONTAINER_CHECK restart_recovery: PASS" container_verification.log
+          grep -F "CONTAINER_CHECK startup_failure: PASS" container_verification.log
+          echo "=== All Container Check PASS Markers Verified! ==="
 
   publish:
     name: Publish Container to GHCR

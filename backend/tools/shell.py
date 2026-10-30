@@ -211,35 +211,61 @@ def run_python_subprocess(
 
 
 def validate_shell_security(cmd_str: str) -> None:
-    """Validate that command contains no shell metacharacters or dangerous path escapes."""
-    # 1. Metacharacters check
+    """Validate that command contains no shell metacharacters or dangerous path escapes across all tokenizations."""
+    # 1. Metacharacters check on raw command
     for ch in FORBIDDEN_CHARS:
         if ch in cmd_str:
             raise PermissionError(
                 f"Shell metacharacter '{ch}' is strictly forbidden in run_shell."
             )
 
-    # 2. Raw traversal and UNC checks on unescaped command tokens
+    # 2. Representation 1: Raw command string validation
     raw_tokens = cmd_str.split()
     for t in raw_tokens:
-        if is_unc_path(t):
-            raise PermissionError(f"UNC paths are forbidden: '{t}'")
-        if is_drive_relative(t) or bool(re.match(r"^[a-zA-Z]:", t)):
-            raise PermissionError(f"Drive paths are forbidden: '{t}'")
+        clean = t.strip("'").strip("'").strip('"')
+        if is_unc_path(clean):
+            raise PermissionError(f"UNC paths are forbidden in raw command: '{t}'")
+        if is_drive_relative(clean) or bool(re.match(r"^[a-zA-Z]:", clean)):
+            raise PermissionError(f"Drive paths are forbidden in raw command: '{t}'")
+        if ".." in clean:
+            raise PermissionError(f"Directory traversal '..' is strictly forbidden: '{t}'")
 
-    tokens = shlex.split(cmd_str)
-    for t in tokens:
+    # 3. Representation 2: POSIX tokenization (shlex.split(command, posix=True))
+    try:
+        posix_tokens = shlex.split(cmd_str, posix=True)
+    except ValueError as e:
+        raise PermissionError(f"Malformed shell quoting in command: {e}")
+
+    for idx, t in enumerate(posix_tokens):
+        if is_unc_path(t):
+            raise PermissionError(f"UNC paths are forbidden in POSIX tokens: '{t}'")
+        # POSIX shlex unescapes backslashes (\server -> \servershare).
+        # Any argument starting with a backslash is a path escape / UNC artifact.
+        if t.startswith("\\"):
+            raise PermissionError(f"Backslash path escapes are forbidden in POSIX tokens: '{t}'")
+        if is_drive_relative(t) or bool(re.match(r"^[a-zA-Z]:", t)):
+            raise PermissionError(f"Drive paths are forbidden in POSIX tokens: '{t}'")
         if ".." in t:
             raise PermissionError(f"Directory traversal '..' is strictly forbidden: '{t}'")
-        if is_drive_relative(t) or bool(re.match(r"^[a-zA-Z]:", t)):
-            raise PermissionError(f"Drive-relative paths are forbidden: '{t}'")
-        if is_unc_path(t):
-            raise PermissionError(f"UNC paths are forbidden: '{t}'")
-        # Reject absolute paths in arguments (must be relative to task workspace)
-        if len(tokens) > 1 and t != tokens[0]:
-            p = Path(t)
-            if p.is_absolute():
-                raise PermissionError(f"Absolute paths in command arguments are forbidden: '{t}'")
+        if idx > 0 and Path(t).is_absolute():
+            raise PermissionError(f"Absolute paths in command arguments are forbidden: '{t}'")
+
+    # 4. Representation 3: Non-POSIX tokenization (shlex.split(command, posix=False))
+    try:
+        non_posix_tokens = shlex.split(cmd_str, posix=False)
+    except ValueError as e:
+        raise PermissionError(f"Malformed shell quoting in command: {e}")
+
+    for idx, t in enumerate(non_posix_tokens):
+        clean = t.strip("'").strip("'").strip('"')
+        if is_unc_path(clean):
+            raise PermissionError(f"UNC paths are forbidden in non-POSIX tokens: '{t}'")
+        if is_drive_relative(clean) or bool(re.match(r"^[a-zA-Z]:", clean)):
+            raise PermissionError(f"Drive paths are forbidden in non-POSIX tokens: '{t}'")
+        if ".." in clean:
+            raise PermissionError(f"Directory traversal '..' is strictly forbidden: '{t}'")
+        if idx > 0 and Path(clean).is_absolute():
+            raise PermissionError(f"Absolute paths in command arguments are forbidden: '{t}'")
 
 
 def run_shell(cmd: str, task_id: Optional[str] = None, timeout: float = 15.0) -> Dict[str, Any]:

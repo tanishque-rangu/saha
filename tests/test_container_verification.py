@@ -1,5 +1,6 @@
 """Container Verification Test: runs scripts/verify_container.sh when Docker is present."""
 
+import os
 import shutil
 import subprocess
 import sys
@@ -11,8 +12,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 @pytest.mark.skipif(
-    shutil.which("docker") is None,
-    reason="Docker CLI not found in environment (Windows host without Docker daemon/WSL)"
+    os.getenv("SAHA_RUN_CONTAINER_TESTS") != "1" or shutil.which("docker") is None,
+    reason="Container verification tests are opt-in (requires SAHA_RUN_CONTAINER_TESTS=1 and Docker CLI)"
 )
 def test_container_verification_script():
     """Execute the full container verification suite via scripts/verify_container.sh."""

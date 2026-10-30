@@ -58,6 +58,89 @@ def test_shell_blocks_path_escapes_in_args():
         run_shell("cat C:test.txt")
 
 
+def test_shell_blocks_unc_paths_all_representations():
+    """UNC paths in unquoted, double-quoted, single-quoted, and forward-slash formats must be rejected."""
+    prohibited_unc_commands = [
+        r"cat \\server\share\file.txt",
+        'cat "\\\\server\\share\\file.txt"',
+        "cat '\\\\server\\share\\file.txt'",
+        r"cat \\\\server\\\\share\\\\file.txt",
+        'cat "\\\\server\\\\share\\\\file.txt"',
+        "cat //server/share/file.txt",
+        'cat "//server/share/file.txt"',
+        "cat '//server/share/file.txt'",
+        r"ls \\server\share",
+        "ls //server/share",
+        r"head -n 5 \\server\share\file.txt",
+        r"tail -n 5 \\server\share\file.txt",
+        r"grep pattern \\server\share\file.txt",
+    ]
+    for cmd in prohibited_unc_commands:
+        with pytest.raises(PermissionError):
+            run_shell(cmd)
+
+
+def test_shell_blocks_tokenization_and_drive_escapes():
+    """Drive paths, escaped backslashes, and tokenization differences must be rejected."""
+    prohibited_commands = [
+        r"cat C:\Windows\system32\cmd.exe",
+        'cat "C:\\Windows\\win.ini"',
+        "cat 'C:\\Windows\\win.ini'",
+        "cat D:relative.txt",
+        'cat "D:relative.txt"',
+        "cat ../secret.txt",
+        'cat "../secret.txt"',
+        "cat '..\\secret.txt'",
+    ]
+    for cmd in prohibited_commands:
+        with pytest.raises(PermissionError):
+            run_shell(cmd)
+
+
+def test_shell_allows_normal_valid_commands():
+    """Normal safe commands with legitimate arguments must execute without false positives."""
+    tid = "test_shell_valid_cmds"
+    ws = get_workspace_dir(tid)
+    test_file = ws / "sample.txt"
+    test_file.write_text("line 1\nline 2\nline 3\npattern target\nline 5\n", encoding="utf-8")
+
+    try:
+        # Echo
+        res_echo = run_shell("echo hello world", task_id=tid)
+        assert res_echo["exit_code"] == 0
+        assert "hello world" in res_echo["stdout"]
+
+        # Cat unquoted and quoted
+        res_cat = run_shell("cat sample.txt", task_id=tid)
+        assert res_cat["exit_code"] == 0
+        assert "pattern target" in res_cat["stdout"]
+
+        res_cat_q = run_shell('cat "sample.txt"', task_id=tid)
+        assert res_cat_q["exit_code"] == 0
+
+        # Ls
+        res_ls = run_shell("ls", task_id=tid)
+        assert res_ls["exit_code"] == 0
+        assert "sample.txt" in res_ls["stdout"]
+
+        # Head and Tail
+        res_head = run_shell("head -n 2 sample.txt", task_id=tid)
+        assert res_head["exit_code"] == 0
+        assert "line 1" in res_head["stdout"]
+
+        res_tail = run_shell("tail -n 2 sample.txt", task_id=tid)
+        assert res_tail["exit_code"] == 0
+        assert "line 5" in res_tail["stdout"]
+
+        # Grep
+        res_grep = run_shell('grep "pattern" sample.txt', task_id=tid)
+        assert res_grep["exit_code"] == 0
+        assert "pattern target" in res_grep["stdout"]
+    finally:
+        if test_file.exists():
+            test_file.unlink()
+
+
 def test_child_environment_scrubs_api_key():
     """Child python subprocesses must NEVER inherit NEBIUS_API_KEY."""
     tid = "test_env_scrub"

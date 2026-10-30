@@ -1,13 +1,25 @@
 #!/bin/bash
 # ==============================================================================
-# Saha - Focused Linux & Container Verification Script
+# Saha - Focused Linux & Container Verification Suite
+#
+# MARKER SPECIFICATION:
+# The script outputs structured status markers for CI verification:
+#   CONTAINER_CHECK <check_name>: PASS
+#   CONTAINER_CHECK <check_name>: FAIL
+#
+# Supported checks:
+#   - non_default_port: Non-default PORT (e.g. 9090) health, UID 10001 & logs
+#   - persistence: Data persistence and initial task state
+#   - restart_recovery: Task state readability & resumption across restart
+#   - startup_failure: Startup recovery failure aborts health
 #
 # Validates:
-# 1. Image build using standard Dockerfile (no changes to hosting provider).
+# 1. Image build using standard Dockerfile.
 # 2. Full test suite execution inside Linux container (including symlink escape test).
-# 3. Persistent data mount at /data across container restart (task state recovery).
-# 4. Startup recovery failure prevention (corrupted DB prevents healthy status).
-# 5. Clean teardown of only test-created resources.
+# 3. Dynamic non-default PORT binding, health response, and non-root UID 10001.
+# 4. Persistent data mount at /data across container restart (task state recovery).
+# 5. Startup recovery failure prevention (corrupted DB prevents healthy status).
+# 6. Clean teardown of all test-created resources.
 # ==============================================================================
 
 set -euo pipefail
@@ -17,9 +29,11 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 IMAGE_TAG="${SAHA_TEST_IMAGE:-saha:verification}"
 PORT="${SAHA_TEST_PORT:-18080}"
+NON_DEFAULT_PORT="${SAHA_TEST_NON_DEFAULT_PORT:-9090}"
 OWNER_TOKEN="linux_container_verification_token_32_chars!"
 
 PID_SUFFIX="$$"
+PORT_CONTAINER="saha-verify-port-${PID_SUFFIX}"
 TEST_CONTAINER="saha-verify-test-${PID_SUFFIX}"
 RESTART_CONTAINER="saha-verify-restart-${PID_SUFFIX}"
 CORRUPT_CONTAINER="saha-verify-corrupt-${PID_SUFFIX}"
@@ -33,7 +47,7 @@ cleanup() {
     echo "==================================================================="
     echo " [CLEANUP] Cleaning up test resources..."
     echo "==================================================================="
-    docker rm -f "$TEST_CONTAINER" "$RESTART_CONTAINER" "$CORRUPT_CONTAINER" 2>/dev/null || true
+    docker rm -f "$PORT_CONTAINER" "$TEST_CONTAINER" "$RESTART_CONTAINER" "$CORRUPT_CONTAINER" 2>/dev/null || true
     if [ -n "$PERSIST_DIR" ] && [ -d "$PERSIST_DIR" ]; then
         rm -rf "$PERSIST_DIR" 2>/dev/null || true
     fi
@@ -49,9 +63,10 @@ trap cleanup EXIT INT TERM
 echo "==================================================================="
 echo " SAHA LINUX & CONTAINER VERIFICATION SUITE"
 echo "==================================================================="
-echo "Project Root: $PROJECT_ROOT"
-echo "Image Tag:    $IMAGE_TAG"
-echo "Test Port:    $PORT"
+echo "Project Root:      $PROJECT_ROOT"
+echo "Image Tag:         $IMAGE_TAG"
+echo "Default Test Port: $PORT"
+echo "Non-Default Port:  $NON_DEFAULT_PORT"
 echo ""
 
 # Pre-flight check: Docker daemon availability
@@ -93,6 +108,7 @@ docker run --rm \
   -v "$PROJECT_ROOT/tests:/app/tests:ro" \
   -v "$PROJECT_ROOT/pytest.ini:/app/pytest.ini:ro" \
   -v "$PROJECT_ROOT/scripts:/app/scripts:ro" \
+  -e SAHA_RUN_CONTAINER_TESTS=0 \
   -e SAHA_PUBLIC_MODE=false \
   -e SAHA_DEMO_MODE=true \
   -e NEBIUS_API_KEY="" \
@@ -104,16 +120,88 @@ echo "[STEP 2] Linux pytest execution complete. All tests (including symlink esc
 echo ""
 
 # ------------------------------------------------------------------------------
-# STEP 3: Persistent Mount & Task State Across Restarts
+# STEP 3: Non-default PORT Configuration Test (Railway / Dynamic Port Support)
 # ------------------------------------------------------------------------------
 echo "==================================================================="
-echo " [STEP 3] Persistent volume mount & task recovery across restarts..."
+echo " [STEP 3] Testing non-default PORT configuration (PORT=$NON_DEFAULT_PORT)..."
+echo "==================================================================="
+
+echo "[3.1] Starting container $PORT_CONTAINER with -e PORT=$NON_DEFAULT_PORT on port $NON_DEFAULT_PORT..."
+docker run -d \
+  --name "$PORT_CONTAINER" \
+  -p "${NON_DEFAULT_PORT}:${NON_DEFAULT_PORT}" \
+  -e PORT="${NON_DEFAULT_PORT}" \
+  -e SAHA_PUBLIC_MODE=true \
+  -e SAHA_DEMO_MODE=true \
+  -e NEBIUS_API_KEY="" \
+  "$IMAGE_TAG"
+
+echo "[3.2] Waiting up to 30s for non-default port /health to report ok..."
+READY_PORT=0
+PORT_HEALTH_DATA=""
+for i in $(seq 1 30); do
+    PORT_HEALTH_DATA=$(curl -s "http://127.0.0.1:${NON_DEFAULT_PORT}/health" || true)
+    if echo "$PORT_HEALTH_DATA" | grep -Eq '"status":\s*"ok"'; then
+        READY_PORT=1
+        echo "Container healthy on non-default port $NON_DEFAULT_PORT after ${i}s: $PORT_HEALTH_DATA"
+        break
+    fi
+    sleep 1
+done
+
+if [ "$READY_PORT" -ne 1 ]; then
+    echo "CONTAINER_CHECK non_default_port: FAIL"
+    echo "ERROR: Container did not become healthy on non-default port $NON_DEFAULT_PORT within 30s."
+    docker logs "$PORT_CONTAINER"
+    exit 1
+fi
+
+# Verify uvicorn process UID is 10001
+UVICORN_PORT_UID=$(docker exec "$PORT_CONTAINER" sh -c '
+    FOUND_UID=""
+    for pid_dir in /proc/[0-9]*; do
+        if [ -f "$pid_dir/cmdline" ] && grep -q "uvicorn" "$pid_dir/cmdline" 2>/dev/null; then
+            FOUND_UID=$(awk "/^Uid:/ {print \$2}" "$pid_dir/status")
+            break
+        fi
+    done
+    echo "$FOUND_UID"
+')
+echo "Verified uvicorn process UID on non-default port container: $UVICORN_PORT_UID"
+if [ "$UVICORN_PORT_UID" -ne 10001 ]; then
+    echo "CONTAINER_CHECK non_default_port: FAIL"
+    echo "ERROR: Expected uvicorn process UID 10001, got '$UVICORN_PORT_UID'"
+    exit 1
+fi
+
+# Verify docker logs contain entrypoint privilege drop line
+PORT_LOGS=$(docker logs "$PORT_CONTAINER" 2>&1)
+if ! echo "$PORT_LOGS" | grep -q "running as UID 10001"; then
+    echo "CONTAINER_CHECK non_default_port: FAIL"
+    echo "ERROR: Container logs do not show entrypoint privilege drop line 'running as UID 10001'"
+    echo "$PORT_LOGS"
+    exit 1
+fi
+
+# Clean up port container
+docker stop "$PORT_CONTAINER" >/dev/null
+docker rm "$PORT_CONTAINER" >/dev/null
+
+echo "CONTAINER_CHECK non_default_port: PASS"
+echo "[STEP 3] Non-default PORT test passed successfully."
+echo ""
+
+# ------------------------------------------------------------------------------
+# STEP 4: Persistent Mount & Task State Across Restarts
+# ------------------------------------------------------------------------------
+echo "==================================================================="
+echo " [STEP 4] Persistent volume mount & task recovery across restarts..."
 echo "==================================================================="
 
 PERSIST_DIR="$(mktemp -d /tmp/saha-persist-XXXXXX 2>/dev/null || mktemp -d -t saha-persist-XXXXXX)"
 mkdir -p "$PERSIST_DIR/workspace"
 
-echo "[3.1] Starting Container 1 ($TEST_CONTAINER) with mount $PERSIST_DIR:/data..."
+echo "[4.1] Starting Container 1 ($TEST_CONTAINER) with mount $PERSIST_DIR:/data..."
 docker run -d \
   --name "$TEST_CONTAINER" \
   -p "${PORT}:8080" \
@@ -124,8 +212,9 @@ docker run -d \
   -e NEBIUS_API_KEY="" \
   "$IMAGE_TAG"
 
-echo "[3.2] Waiting up to 30s for Container 1 /health to report ok..."
+echo "[4.2] Waiting up to 30s for Container 1 /health to report ok..."
 READY=0
+HEALTH_DATA=""
 for i in $(seq 1 30); do
     HEALTH_DATA=$(curl -s "http://127.0.0.1:${PORT}/health" || true)
     if echo "$HEALTH_DATA" | grep -Eq '"status":\s*"ok"'; then
@@ -137,6 +226,7 @@ for i in $(seq 1 30); do
 done
 
 if [ "$READY" -ne 1 ]; then
+    echo "CONTAINER_CHECK persistence: FAIL"
     echo "ERROR: Container 1 did not become healthy within 30s."
     docker logs "$TEST_CONTAINER"
     exit 1
@@ -144,6 +234,7 @@ fi
 
 # Verify data_persistent is true
 echo "$HEALTH_DATA" | grep -Eq '"data_persistent":\s*true' || {
+    echo "CONTAINER_CHECK persistence: FAIL"
     echo "ERROR: Health check did not report 'data_persistent: true'"
     exit 1
 }
@@ -161,11 +252,12 @@ UVICORN_UID=$(docker exec "$TEST_CONTAINER" sh -c '
 ')
 echo "Verified uvicorn process UID inside container: $UVICORN_UID"
 if [ "$UVICORN_UID" -ne 10001 ]; then
+    echo "CONTAINER_CHECK persistence: FAIL"
     echo "ERROR: Expected uvicorn process UID 10001, got '$UVICORN_UID'"
     exit 1
 fi
 
-echo "[3.3] Creating task state inside Container 1 (mocked LLM/network)..."
+echo "[4.3] Creating task state inside Container 1 (mocked LLM/network)..."
 TASK_ID=$(docker exec "$TEST_CONTAINER" python -c "
 import json
 from backend.db import hash_owner_token
@@ -194,10 +286,11 @@ print(task.id)
 
 echo "Created task ID: $TASK_ID"
 
-echo "[3.4] Testing authenticated API access on Container 1..."
+echo "[4.4] Testing authenticated API access on Container 1..."
 # 1. Without header -> 401
 CODE_UNAUTH=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${PORT}/tasks/$TASK_ID")
 if [ "$CODE_UNAUTH" -ne 401 ]; then
+    echo "CONTAINER_CHECK persistence: FAIL"
     echo "ERROR: Expected HTTP 401 for unauthenticated request, got $CODE_UNAUTH"
     exit 1
 fi
@@ -205,6 +298,7 @@ fi
 # 2. With wrong token -> 404
 CODE_FORBID=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Saha-Owner: wrong_token_32_characters_long_!" "http://127.0.0.1:${PORT}/tasks/$TASK_ID")
 if [ "$CODE_FORBID" -ne 404 ]; then
+    echo "CONTAINER_CHECK persistence: FAIL"
     echo "ERROR: Expected HTTP 404 for foreign owner token, got $CODE_FORBID"
     exit 1
 fi
@@ -213,15 +307,18 @@ fi
 TASK_DETAIL=$(curl -s -f -H "X-Saha-Owner: $OWNER_TOKEN" "http://127.0.0.1:${PORT}/tasks/$TASK_ID")
 echo "Authorized task detail: $TASK_DETAIL"
 echo "$TASK_DETAIL" | grep -Eq '"is_complete":\s*true' || {
+    echo "CONTAINER_CHECK persistence: FAIL"
     echo "ERROR: Task is not complete in Container 1"
     exit 1
 }
 
-echo "[3.5] Terminating Container 1 to simulate restart..."
-docker stop "$TEST_CONTAINER"
-docker rm "$TEST_CONTAINER"
+echo "CONTAINER_CHECK persistence: PASS"
 
-echo "[3.6] Starting Container 2 ($RESTART_CONTAINER) mounting the exact same /data directory..."
+echo "[4.5] Terminating Container 1 to simulate restart..."
+docker stop "$TEST_CONTAINER" >/dev/null
+docker rm "$TEST_CONTAINER" >/dev/null
+
+echo "[4.6] Starting Container 2 ($RESTART_CONTAINER) mounting the exact same /data directory..."
 docker run -d \
   --name "$RESTART_CONTAINER" \
   -p "${PORT}:8080" \
@@ -232,8 +329,9 @@ docker run -d \
   -e NEBIUS_API_KEY="" \
   "$IMAGE_TAG"
 
-echo "[3.7] Waiting up to 30s for Container 2 /health to report ok..."
+echo "[4.7] Waiting up to 30s for Container 2 /health to report ok..."
 READY_2=0
+HEALTH_DATA_2=""
 for i in $(seq 1 30); do
     HEALTH_DATA_2=$(curl -s "http://127.0.0.1:${PORT}/health" || true)
     if echo "$HEALTH_DATA_2" | grep -Eq '"status":\s*"ok"'; then
@@ -245,19 +343,22 @@ for i in $(seq 1 30); do
 done
 
 if [ "$READY_2" -ne 1 ]; then
+    echo "CONTAINER_CHECK restart_recovery: FAIL"
     echo "ERROR: Container 2 did not become healthy within 30s."
     docker logs "$RESTART_CONTAINER"
     exit 1
 fi
 
-echo "[3.8] Verifying persisted task state is readable and recoverable on Container 2..."
+echo "[4.8] Verifying persisted task state is readable and recoverable on Container 2..."
 TASK_DETAIL_2=$(curl -s -f -H "X-Saha-Owner: $OWNER_TOKEN" "http://127.0.0.1:${PORT}/tasks/$TASK_ID")
 echo "Container 2 task detail: $TASK_DETAIL_2"
 echo "$TASK_DETAIL_2" | grep -q "$TASK_ID" || {
+    echo "CONTAINER_CHECK restart_recovery: FAIL"
     echo "ERROR: Task $TASK_ID missing from Container 2"
     exit 1
 }
 echo "$TASK_DETAIL_2" | grep -Eq '"is_complete":\s*true' || {
+    echo "CONTAINER_CHECK restart_recovery: FAIL"
     echo "ERROR: Task $TASK_ID is not complete on Container 2"
     exit 1
 }
@@ -266,18 +367,23 @@ echo "$TASK_DETAIL_2" | grep -Eq '"is_complete":\s*true' || {
 RESUME_RESP=$(curl -s -f -X POST -H "X-Saha-Owner: $OWNER_TOKEN" "http://127.0.0.1:${PORT}/tasks/$TASK_ID/resume")
 echo "Container 2 task resume response: $RESUME_RESP"
 echo "$RESUME_RESP" | grep -q '"resuming"' || {
+    echo "CONTAINER_CHECK restart_recovery: FAIL"
     echo "ERROR: Expected 'resuming' response from Container 2 /resume"
     exit 1
 }
 
-echo "[STEP 3] Persistent mount and task state recovery verified across container restart."
+docker stop "$RESTART_CONTAINER" >/dev/null
+docker rm "$RESTART_CONTAINER" >/dev/null
+
+echo "CONTAINER_CHECK restart_recovery: PASS"
+echo "[STEP 4] Persistent mount and task state recovery verified across container restart."
 echo ""
 
 # ------------------------------------------------------------------------------
-# STEP 4: Recovery Failure Prevents Server Becoming Healthy
+# STEP 5: Recovery Failure Prevents Server Becoming Healthy
 # ------------------------------------------------------------------------------
 echo "==================================================================="
-echo " [STEP 4] Testing that a recovery failure prevents health..."
+echo " [STEP 5] Testing that a recovery failure prevents health..."
 echo "==================================================================="
 
 CORRUPT_DIR="$(mktemp -d /tmp/saha-corrupt-XXXXXX 2>/dev/null || mktemp -d -t saha-corrupt-XXXXXX)"
@@ -285,7 +391,7 @@ mkdir -p "$CORRUPT_DIR/workspace"
 echo "MALFORMED_NON_SQLITE_BINARY_HEADER" > "$CORRUPT_DIR/saha.db"
 
 CORRUPT_PORT=$((PORT + 1))
-echo "[4.1] Starting container with corrupt database mount on port $CORRUPT_PORT..."
+echo "[5.1] Starting container with corrupt database mount on port $CORRUPT_PORT..."
 docker run -d \
   --name "$CORRUPT_CONTAINER" \
   -p "${CORRUPT_PORT}:8080" \
@@ -296,7 +402,7 @@ docker run -d \
   -e NEBIUS_API_KEY="" \
   "$IMAGE_TAG"
 
-echo "[4.2] Monitoring health of corrupt container..."
+echo "[5.2] Monitoring health of corrupt container..."
 sleep 4
 
 # Check health endpoint - must NOT return HTTP 200
@@ -304,6 +410,7 @@ CORRUPT_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${CORRUP
 echo "Corrupt container /health status code: $CORRUPT_CODE"
 
 if [ "$CORRUPT_CODE" = "200" ]; then
+    echo "CONTAINER_CHECK startup_failure: FAIL"
     echo "ERROR: Corrupt container returned HTTP 200 OK! Expected failure (503 or unreachable)."
     exit 1
 fi
@@ -312,7 +419,11 @@ CORRUPT_LOGS=$(docker logs "$CORRUPT_CONTAINER" 2>&1 || true)
 echo "Corrupt container log excerpt:"
 echo "$CORRUPT_LOGS" | tail -n 12
 
-echo "[STEP 4] Startup recovery failure correctly prevented server from becoming healthy."
+docker stop "$CORRUPT_CONTAINER" >/dev/null 2>&1 || true
+docker rm "$CORRUPT_CONTAINER" >/dev/null 2>&1 || true
+
+echo "CONTAINER_CHECK startup_failure: PASS"
+echo "[STEP 5] Startup recovery failure correctly prevented server from becoming healthy."
 echo ""
 
 echo "==================================================================="

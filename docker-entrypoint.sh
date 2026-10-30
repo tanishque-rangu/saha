@@ -8,7 +8,7 @@ APP_UID=10001
 APP_GID=10001
 
 # Dynamic cloud PORT handling (Render, Railway set $PORT)
-if [ -n "$PORT" ] && [ "$PORT" != "8080" ]; then
+if [ -n "$PORT" ] && [ "$PORT" != "8080" ] && [ "$1" != "sh" ]; then
     set -- $(echo "$@" | sed "s/--port 8080/--port $PORT/")
 fi
 
