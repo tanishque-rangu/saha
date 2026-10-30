@@ -50,22 +50,50 @@ from backend.tools.sandbox import delete_owner_workspace, resolve_workspace_path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = PROJECT_ROOT / "web"
 
-# Startup check: verify database and workspace directory writability or fallback
+logger = logging.getLogger("saha.api")
+
+# Verify database and workspace directory writability or fallback at initialization
 check_and_init_data_dirs()
-try:
-    Ledger.recover_stale_running_tasks()
-except Exception:
-    pass
+
+# Track startup recovery execution and health visibility
+STARTUP_RECOVERY_STATUS: Dict[str, Any] = {
+    "lifespan_started": False,
+    "completed": False,
+    "error": None,
+    "recovered_tasks": [],
+}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Production lifespan hook: executes startup recovery on real server boot."""
-    check_and_init_data_dirs()
+    """Production lifespan hook: executes startup recovery exactly once on real server boot."""
+    STARTUP_RECOVERY_STATUS["lifespan_started"] = True
+    STARTUP_RECOVERY_STATUS["completed"] = False
+    STARTUP_RECOVERY_STATUS["error"] = None
+
+    # Verify storage directory writability or fallback
     try:
-        Ledger.recover_stale_running_tasks()
-    except Exception:
-        pass
+        check_and_init_data_dirs()
+    except Exception as err:
+        logger.error("Startup database/workspace initialization failed: %s", err, exc_info=True)
+        STARTUP_RECOVERY_STATUS["error"] = f"Storage initialization failed: {err}"
+        raise
+
+    # Execute stale running task recovery exactly once
+    try:
+        recovered = Ledger.recover_stale_running_tasks()
+        STARTUP_RECOVERY_STATUS["completed"] = True
+        STARTUP_RECOVERY_STATUS["error"] = None
+        STARTUP_RECOVERY_STATUS["recovered_tasks"] = recovered
+        if recovered:
+            logger.info("Startup recovery recovered %d stale running tasks: %s", len(recovered), recovered)
+    except Exception as err:
+        error_msg = f"Startup recovery failed: {err}"
+        logger.error(error_msg, exc_info=True)
+        STARTUP_RECOVERY_STATUS["completed"] = False
+        STARTUP_RECOVERY_STATUS["error"] = str(err)
+        raise RuntimeError(error_msg) from err
+
     yield
 
 
@@ -208,8 +236,29 @@ class ApproveActionRequest(BaseModel):
 
 
 @app.get("/health")
-def health() -> Dict[str, Any]:
+def health() -> Any:
     data_status = get_data_dir_status()
+
+    # Prevent reporting healthy if recovery failed or if lifespan was started but recovery did not complete
+    if STARTUP_RECOVERY_STATUS.get("error") is not None or (
+        STARTUP_RECOVERY_STATUS.get("lifespan_started") and not STARTUP_RECOVERY_STATUS.get("completed")
+    ):
+        content = {
+            "status": "unhealthy",
+            "service": "Saha",
+            "recovery_ok": False,
+            "public_mode": is_public_mode(),
+            "demo_mode": is_demo_mode(),
+            "data_dir_ok": data_status["data_dir_ok"],
+            "data_persistent": data_status["data_persistent"],
+        }
+        if not is_public_mode():
+            content["recovery_error"] = (
+                STARTUP_RECOVERY_STATUS.get("error") or "Startup recovery did not complete"
+            )
+            content["data_dir"] = data_status["effective_data_dir"]
+        return JSONResponse(status_code=503, content=content)
+
     resp = {
         "status": "ok",
         "service": "Saha",
