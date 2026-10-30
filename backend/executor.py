@@ -102,11 +102,28 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
             # If content_brief is present, WORKER synthesizes the content
             content_brief = args.get("content_brief")
             if content_brief:
-                worker_prompt = (
-                    f"You are Saha's Worker AI. Generate the exact file content for '{path}' based on this brief:\n"
-                    f"{content_brief}\n\n"
-                    f"Output strictly the file content. Do not include introductory remarks or conversational filler."
-                )
+                memory_tags: List[str] = []
+                memory_block: str = ""
+                if owner_id:
+                    try:
+                        from backend.memory import format_memory_prompt_block, retrieve_relevant_memories
+                        task = Ledger.get_task(task_id, db_path=db_path)
+                        query_text = f"{task.goal if task else ''} {content_brief}".strip()
+                        retrieved = retrieve_relevant_memories(goal=query_text, owner_id=owner_id, db_path=db_path)
+                        if retrieved:
+                            memory_block = format_memory_prompt_block(retrieved)
+                            memory_tags = [f"memory:{m.id}" for m in retrieved]
+                    except Exception:
+                        pass
+
+                prompt_parts = [
+                    f"You are Saha's Worker AI. Generate the exact file content for '{path}' based on this brief:\n{content_brief}"
+                ]
+                if memory_block:
+                    prompt_parts.append(memory_block)
+                prompt_parts.append("Output strictly the file content. Do not include introductory remarks or conversational filler.")
+                worker_prompt = "\n\n".join(prompt_parts)
+
                 safe_file = re.sub(r"[^A-Za-z0-9._-]", "_", Path(path).name)[:64]
                 generated_content = call_llm(
                     model=WORKER_MODEL,
@@ -114,7 +131,7 @@ def execute_step(step_id: str, db_path: Optional[str] = None) -> Step:
                     role="worker",
                     temperature=0.0,
                     owner_id=owner_id,
-                    context_tags=["role:worker", f"step:{step.idx}", f"task_id:{task_id}", f"file:{safe_file}"],
+                    context_tags=["role:worker", f"step:{step.idx}", f"task_id:{task_id}", f"file:{safe_file}"] + memory_tags,
                     db_path=db_path,
                 )
                 actual_content = generated_content.strip()
@@ -350,6 +367,17 @@ def run_task(task_id: str, db_path: Optional[str] = None) -> Task:
         summary = Ledger.get_task_summary(task_id, db_path=db_path)
         if summary["is_complete"]:
             Ledger.update_task_status(task_id, "complete", db_path=db_path)
+            try:
+                import threading
+                from backend.memory import propose_memory_from_completed_task
+                task_owner = task.owner_id if task else get_task_owner_id(task_id, db_path=db_path)
+                threading.Thread(
+                    target=propose_memory_from_completed_task,
+                    args=(task_id, task_owner, db_path),
+                    daemon=True,
+                ).start()
+            except Exception:
+                pass
         else:
             has_failed = any(s["status"] == "failed" for s in summary["steps"] if s["status"] != "superseded")
             if has_failed:

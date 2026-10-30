@@ -155,6 +155,146 @@ async def public_mode_security_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+
+# -------------------------------------------------------------------------
+# MEMORY & SAVED ROUTINES (Phase 6-Lite)
+# -------------------------------------------------------------------------
+
+
+class CreateMemoryRequest(BaseModel):
+    kind: str = Field(..., description="fact, preference, or note")
+    text: str = Field(..., max_length=300)
+
+
+class SaveSkillRequest(BaseModel):
+    name: str = Field(..., max_length=60)
+    description: Optional[str] = Field(default="", max_length=200)
+
+
+@app.get("/memories")
+def list_memories_endpoint(request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.memory import get_active_memories
+    mems = get_active_memories(owner_id)
+    return {"memories": [m.to_dict() for m in mems], "count": len(mems)}
+
+
+@app.post("/memories")
+def create_memory_endpoint(payload: CreateMemoryRequest, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.memory import create_memory
+    try:
+        mem = create_memory(
+            owner_id=owner_id,
+            kind=payload.kind,
+            text=payload.text,
+            source="user",
+            status="active",
+        )
+        return {"memory": mem.to_dict(), "status": "created"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/memories/{memory_id}")
+def delete_memory_endpoint(memory_id: str, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.memory import delete_memory, get_memory
+    existing = get_memory(memory_id, owner_id=owner_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    deleted = delete_memory(memory_id, owner_id=owner_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"status": "deleted", "id": memory_id}
+
+
+@app.get("/memories/proposals")
+def list_memory_proposals_endpoint(request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.memory import get_proposed_memories
+    proposals = get_proposed_memories(owner_id)
+    return {"proposals": [p.to_dict() for p in proposals], "count": len(proposals)}
+
+
+@app.post("/memories/proposals/{memory_id}/approve")
+def approve_memory_proposal_endpoint(memory_id: str, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.memory import approve_memory_proposal
+    try:
+        mem = approve_memory_proposal(memory_id, owner_id=owner_id)
+        return {"memory": mem.to_dict(), "status": "approved"}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Memory proposal not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/memories/proposals/{memory_id}/reject")
+def reject_memory_proposal_endpoint(memory_id: str, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.memory import reject_memory_proposal
+    try:
+        rejected = reject_memory_proposal(memory_id, owner_id=owner_id)
+        if not rejected:
+            raise HTTPException(status_code=404, detail="Memory proposal not found")
+        return {"status": "rejected", "id": memory_id}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Memory proposal not found")
+
+
+@app.post("/tasks/{task_id}/save-as-skill")
+def save_task_as_skill_endpoint(task_id: str, payload: SaveSkillRequest, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.skills import create_skill_from_task
+    try:
+        skill = create_skill_from_task(
+            task_id=task_id,
+            owner_id=owner_id,
+            name=payload.name,
+            description=payload.description or "",
+        )
+        return {"skill": skill.to_dict(), "status": "saved"}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/skills")
+def list_skills_endpoint(request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.skills import get_skills
+    skills_list = get_skills(owner_id)
+    return {"skills": [s.to_dict() for s in skills_list], "count": len(skills_list)}
+
+
+@app.delete("/skills/{skill_id}")
+def delete_skill_endpoint(skill_id: str, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.skills import delete_skill, get_skill
+    existing = get_skill(skill_id, owner_id=owner_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    deleted = delete_skill(skill_id, owner_id=owner_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return {"status": "deleted", "id": skill_id}
+
+
+@app.post("/skills/{skill_id}/run")
+def run_skill_endpoint(skill_id: str, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.skills import run_skill
+    try:
+        result = run_skill(skill_id, owner_id=owner_id)
+        return result
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
     """Ensure no absolute paths or raw stack traces leak to callers."""
@@ -582,6 +722,146 @@ def sabotage_task_endpoint(task_id: str, request: Request) -> Dict[str, Any]:
         "deleted_file": target_rel,
         "message": f"Successfully deleted '{target_rel}' from task workspace without modifying ledger.",
     }
+
+
+
+# -------------------------------------------------------------------------
+# MEMORY & SAVED ROUTINES (Phase 6-Lite)
+# -------------------------------------------------------------------------
+
+
+class CreateMemoryRequest(BaseModel):
+    kind: str = Field(..., description="fact, preference, or note")
+    text: str = Field(..., max_length=300)
+
+
+class SaveSkillRequest(BaseModel):
+    name: str = Field(..., max_length=60)
+    description: Optional[str] = Field(default="", max_length=200)
+
+
+@app.get("/memories")
+def list_memories_endpoint(request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.memory import get_active_memories
+    mems = get_active_memories(owner_id)
+    return {"memories": [m.to_dict() for m in mems], "count": len(mems)}
+
+
+@app.post("/memories")
+def create_memory_endpoint(payload: CreateMemoryRequest, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.memory import create_memory
+    try:
+        mem = create_memory(
+            owner_id=owner_id,
+            kind=payload.kind,
+            text=payload.text,
+            source="user",
+            status="active",
+        )
+        return {"memory": mem.to_dict(), "status": "created"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/memories/{memory_id}")
+def delete_memory_endpoint(memory_id: str, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.memory import delete_memory, get_memory
+    existing = get_memory(memory_id, owner_id=owner_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    deleted = delete_memory(memory_id, owner_id=owner_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"status": "deleted", "id": memory_id}
+
+
+@app.get("/memories/proposals")
+def list_memory_proposals_endpoint(request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.memory import get_proposed_memories
+    proposals = get_proposed_memories(owner_id)
+    return {"proposals": [p.to_dict() for p in proposals], "count": len(proposals)}
+
+
+@app.post("/memories/proposals/{memory_id}/approve")
+def approve_memory_proposal_endpoint(memory_id: str, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.memory import approve_memory_proposal
+    try:
+        mem = approve_memory_proposal(memory_id, owner_id=owner_id)
+        return {"memory": mem.to_dict(), "status": "approved"}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Memory proposal not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/memories/proposals/{memory_id}/reject")
+def reject_memory_proposal_endpoint(memory_id: str, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.memory import reject_memory_proposal
+    try:
+        rejected = reject_memory_proposal(memory_id, owner_id=owner_id)
+        if not rejected:
+            raise HTTPException(status_code=404, detail="Memory proposal not found")
+        return {"status": "rejected", "id": memory_id}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Memory proposal not found")
+
+
+@app.post("/tasks/{task_id}/save-as-skill")
+def save_task_as_skill_endpoint(task_id: str, payload: SaveSkillRequest, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.skills import create_skill_from_task
+    try:
+        skill = create_skill_from_task(
+            task_id=task_id,
+            owner_id=owner_id,
+            name=payload.name,
+            description=payload.description or "",
+        )
+        return {"skill": skill.to_dict(), "status": "saved"}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/skills")
+def list_skills_endpoint(request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.skills import get_skills
+    skills_list = get_skills(owner_id)
+    return {"skills": [s.to_dict() for s in skills_list], "count": len(skills_list)}
+
+
+@app.delete("/skills/{skill_id}")
+def delete_skill_endpoint(skill_id: str, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.skills import delete_skill, get_skill
+    existing = get_skill(skill_id, owner_id=owner_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    deleted = delete_skill(skill_id, owner_id=owner_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return {"status": "deleted", "id": skill_id}
+
+
+@app.post("/skills/{skill_id}/run")
+def run_skill_endpoint(skill_id: str, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.skills import run_skill
+    try:
+        result = run_skill(skill_id, owner_id=owner_id)
+        return result
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.exception_handler(Exception)

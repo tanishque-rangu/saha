@@ -90,6 +90,19 @@ def generate_plan(goal: str, context: Optional[str] = None, owner_id: Optional[s
     if context:
         user_prompt += f"\n\nContext & Current State:\n{context}"
 
+    memory_tags: List[str] = []
+    if owner_id:
+        try:
+            from backend.memory import format_memory_prompt_block, retrieve_relevant_memories
+            retrieved = retrieve_relevant_memories(goal=goal, owner_id=owner_id)
+            if retrieved:
+                mem_block = format_memory_prompt_block(retrieved)
+                if mem_block:
+                    user_prompt += f"\n\n{mem_block}"
+                memory_tags = [f"memory:{m.id}" for m in retrieved]
+        except Exception:
+            pass
+
     messages = [
         {"role": "system", "content": get_planner_system_prompt()},
         {"role": "user", "content": user_prompt},
@@ -106,7 +119,7 @@ def generate_plan(goal: str, context: Optional[str] = None, owner_id: Optional[s
                 role="planner",
                 temperature=0.0,
                 owner_id=owner_id,
-                context_tags=["role:planner"],
+                context_tags=["role:planner"] + memory_tags,
             )
             if isinstance(raw_dict, list):
                 raw_dict = {"steps": raw_dict}

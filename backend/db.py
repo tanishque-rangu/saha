@@ -222,6 +222,31 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     error TEXT,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS memories (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('fact', 'preference', 'note')),
+    text TEXT NOT NULL,
+    source TEXT NOT NULL CHECK(source IN ('user', 'proposed')),
+    status TEXT NOT NULL CHECK(status IN ('proposed', 'active')),
+    created_at TEXT NOT NULL,
+    last_used_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS skills (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    steps_json TEXT NOT NULL DEFAULT '[]',
+    source_task_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    runs INTEGER NOT NULL DEFAULT 0,
+    verified_runs INTEGER NOT NULL DEFAULT 0,
+    last_run_at TEXT,
+    last_status TEXT
+);
 """
 
 INDEXES_SQL = """
@@ -233,6 +258,8 @@ CREATE INDEX IF NOT EXISTS idx_drift_events_task ON drift_events(task_id);
 CREATE INDEX IF NOT EXISTS idx_approvals_owner ON approvals(owner_id, status);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_owner ON llm_calls(owner_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_model ON llm_calls(model);
+CREATE INDEX IF NOT EXISTS idx_memories_owner_status ON memories(owner_id, status);
+CREATE INDEX IF NOT EXISTS idx_skills_owner ON skills(owner_id);
 """
 
 
@@ -547,6 +574,8 @@ def delete_owner_space(owner_id: str, db_path: Optional[str] = None) -> Dict[str
         conn.execute("DELETE FROM approvals WHERE owner_id = ?", (owner_id,))
         conn.execute("DELETE FROM policies WHERE owner_id = ?", (owner_id,))
         conn.execute("DELETE FROM llm_calls WHERE owner_id = ?", (owner_id,))
+        conn.execute("DELETE FROM memories WHERE owner_id = ?", (owner_id,))
+        conn.execute("DELETE FROM skills WHERE owner_id = ?", (owner_id,))
     return {"deleted_tasks": deleted_tasks}
 
 

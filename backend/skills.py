@@ -1,0 +1,297 @@
+"""Saha Saved Routines (Skills-Lite) Module.
+
+Provides:
+- Saving verified task plans as reusable skills (max 8 steps, validated against owner policy & public mode).
+- Listing and deleting owner-scoped skills.
+- Running saved skills: clones steps as pending, runs through normal executor & probes,
+  updates stats (runs, verified_runs, last_run_at, last_status).
+"""
+
+import json
+import logging
+import uuid
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+
+from backend.db import get_db, init_db, utc_now_iso
+from backend.executor import run_task
+from backend.ledger import Ledger
+from backend.policy import PUBLIC_ALLOWED_TOOLS, get_owner_policy, is_public_mode
+
+logger = logging.getLogger(__name__)
+
+MAX_SKILL_NAME_LEN = 60
+MAX_SKILL_DESC_LEN = 200
+MAX_SKILL_STEPS = 8
+
+
+@dataclass
+class Skill:
+    id: str
+    owner_id: str
+    name: str
+    description: str
+    steps_json: str
+    source_task_id: str
+    created_at: str
+    runs: int = 0
+    verified_runs: int = 0
+    last_run_at: Optional[str] = None
+    last_status: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        try:
+            steps = json.loads(self.steps_json) if self.steps_json else []
+        except Exception:
+            steps = []
+        return {
+            "id": self.id,
+            "owner_id": self.owner_id,
+            "name": self.name,
+            "description": self.description,
+            "steps": steps,
+            "source_task_id": self.source_task_id,
+            "created_at": self.created_at,
+            "runs": self.runs,
+            "verified_runs": self.verified_runs,
+            "last_run_at": self.last_run_at,
+            "last_status": self.last_status,
+        }
+
+
+def get_skills(owner_id: str, db_path: Optional[str] = None) -> List[Skill]:
+    """List all skills owned by an owner ordered by creation time."""
+    init_db(db_path)
+    with get_db(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM skills
+            WHERE owner_id = ?
+            ORDER BY created_at DESC
+            """,
+            (owner_id,),
+        ).fetchall()
+        return [
+            Skill(
+                id=r["id"],
+                owner_id=r["owner_id"],
+                name=r["name"],
+                description=r["description"],
+                steps_json=r["steps_json"],
+                source_task_id=r["source_task_id"],
+                created_at=r["created_at"],
+                runs=r["runs"],
+                verified_runs=r["verified_runs"],
+                last_run_at=r["last_run_at"],
+                last_status=r["last_status"],
+            )
+            for r in rows
+        ]
+
+
+def get_skill(skill_id: str, owner_id: Optional[str] = None, db_path: Optional[str] = None) -> Optional[Skill]:
+    """Get a single skill by ID, optionally verifying owner."""
+    init_db(db_path)
+    with get_db(db_path) as conn:
+        if owner_id:
+            row = conn.execute(
+                "SELECT * FROM skills WHERE id = ? AND owner_id = ?",
+                (skill_id, owner_id),
+            ).fetchone()
+        else:
+            row = conn.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)).fetchone()
+
+        if not row:
+            return None
+        return Skill(
+            id=row["id"],
+            owner_id=row["owner_id"],
+            name=row["name"],
+            description=row["description"],
+            steps_json=row["steps_json"],
+            source_task_id=row["source_task_id"],
+            created_at=row["created_at"],
+            runs=row["runs"],
+            verified_runs=row["verified_runs"],
+            last_run_at=row["last_run_at"],
+            last_status=row["last_status"],
+        )
+
+
+def delete_skill(skill_id: str, owner_id: str, db_path: Optional[str] = None) -> bool:
+    """Delete a skill by ID with owner scoping."""
+    init_db(db_path)
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            "DELETE FROM skills WHERE id = ? AND owner_id = ?",
+            (skill_id, owner_id),
+        )
+        return cursor.rowcount > 0
+
+
+def create_skill_from_task(
+    task_id: str,
+    owner_id: str,
+    name: str,
+    description: str = "",
+    db_path: Optional[str] = None,
+) -> Skill:
+    """Save a task's verified plan as a skill with validation."""
+    init_db(db_path)
+    task = Ledger.get_task(task_id, owner_id=owner_id, db_path=db_path)
+    if not task:
+        raise KeyError(f"Task {task_id} not found for this owner")
+
+    clean_name = str(name).strip()
+    if not clean_name:
+        raise ValueError("Skill name cannot be empty.")
+    if len(clean_name) > MAX_SKILL_NAME_LEN:
+        raise ValueError(f"Skill name exceeds maximum of {MAX_SKILL_NAME_LEN} characters.")
+
+    clean_desc = str(description or "").strip()
+    if len(clean_desc) > MAX_SKILL_DESC_LEN:
+        raise ValueError(f"Skill description exceeds maximum of {MAX_SKILL_DESC_LEN} characters.")
+
+    # Verify task plan is fully verified
+    active_steps = Ledger.get_steps(task_id, include_superseded=False, db_path=db_path)
+    if not active_steps:
+        raise ValueError("Task has no steps to save.")
+
+    if not all(s.status == "verified" for s in active_steps):
+        raise ValueError("Only fully verified task plans can be saved as a skill.")
+
+    if len(active_steps) > MAX_SKILL_STEPS:
+        raise ValueError(f"Task plan has {len(active_steps)} steps, exceeding maximum allowed of {MAX_SKILL_STEPS}.")
+
+    # Validate tools against owner policy and public mode limits
+    owner_policy = get_owner_policy(owner_id, db_path=db_path)
+    public_mode = is_public_mode()
+
+    steps_to_save: List[Dict[str, Any]] = []
+    for s in active_steps:
+        if s.tool not in owner_policy.allowed_tools:
+            raise ValueError(f"Tool '{s.tool}' is not permitted by owner policy.")
+        if public_mode and s.tool not in PUBLIC_ALLOWED_TOOLS:
+            raise ValueError(f"Tool '{s.tool}' is not permitted in public mode.")
+
+        try:
+            args = json.loads(s.args_json) if s.args_json else {}
+        except Exception:
+            args = {}
+        try:
+            probe = json.loads(s.probe_json) if s.probe_json else {}
+        except Exception:
+            probe = {}
+        try:
+            depends_on = json.loads(s.depends_on_json) if s.depends_on_json else []
+        except Exception:
+            depends_on = []
+
+        step_record = {
+            "idx": s.idx,
+            "intent": s.intent,
+            "tool": s.tool,
+            "args": args,
+            "content_brief": args.get("content_brief"),
+            "probe": probe,
+            "depends_on": depends_on,
+        }
+        steps_to_save.append(step_record)
+
+    skill_id = str(uuid.uuid4())
+    now = utc_now_iso()
+    steps_json = json.dumps(steps_to_save)
+
+    with get_db(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO skills (
+                id, owner_id, name, description, steps_json, source_task_id,
+                created_at, runs, verified_runs, last_run_at, last_status
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, NULL)
+            """,
+            (skill_id, owner_id, clean_name, clean_desc, steps_json, task_id, now),
+        )
+
+    return Skill(
+        id=skill_id,
+        owner_id=owner_id,
+        name=clean_name,
+        description=clean_desc,
+        steps_json=steps_json,
+        source_task_id=task_id,
+        created_at=now,
+        runs=0,
+        verified_runs=0,
+        last_run_at=None,
+        last_status=None,
+    )
+
+
+def run_skill(skill_id: str, owner_id: str, db_path: Optional[str] = None) -> Dict[str, Any]:
+    """Run a saved skill: clones steps as pending into a new task and runs it."""
+    init_db(db_path)
+    skill = get_skill(skill_id, owner_id=owner_id, db_path=db_path)
+    if not skill:
+        raise KeyError(f"Skill {skill_id} not found for this owner")
+
+    try:
+        steps_data = json.loads(skill.steps_json) if skill.steps_json else []
+    except Exception as e:
+        raise ValueError(f"Invalid steps stored in skill: {e}")
+
+    if not steps_data:
+        raise ValueError("Skill has no steps to execute.")
+
+    # Create new task cloning the steps as pending
+    task_goal = f"Routine: {skill.name}"
+    new_task = Ledger.create_task(goal=task_goal, owner_id=owner_id, db_path=db_path)
+
+    cloned_steps: List[Dict[str, Any]] = []
+    for s in steps_data:
+        args = dict(s.get("args", {}))
+        # Ensure content_brief is preserved in args so WORKER regenerates content
+        if "content_brief" in s and s["content_brief"] and "content_brief" not in args:
+            args["content_brief"] = s["content_brief"]
+
+        cloned_steps.append({
+            "idx": s.get("idx"),
+            "intent": s.get("intent"),
+            "tool": s.get("tool"),
+            "args": args,
+            "probe": s.get("probe", {}),
+            "depends_on": s.get("depends_on", []),
+            "status": "pending",
+        })
+
+    Ledger.add_steps(new_task.id, cloned_steps, db_path=db_path)
+
+    # Run the task through normal policy, executor, and probes
+    final_task = run_task(new_task.id, db_path=db_path)
+
+    # Check verification
+    summary = Ledger.get_task_summary(new_task.id, db_path=db_path)
+    is_verified = bool(summary.get("is_complete"))
+    last_status = final_task.status
+    now = utc_now_iso()
+
+    # Update skill stats
+    with get_db(db_path) as conn:
+        conn.execute(
+            """
+            UPDATE skills
+            SET runs = runs + 1,
+                verified_runs = verified_runs + ?,
+                last_run_at = ?,
+                last_status = ?
+            WHERE id = ? AND owner_id = ?
+            """,
+            (1 if is_verified else 0, now, last_status, skill_id, owner_id),
+        )
+
+    updated_skill = get_skill(skill_id, owner_id=owner_id, db_path=db_path)
+    return {
+        "task": final_task.to_dict(),
+        "skill": updated_skill.to_dict() if updated_skill else skill.to_dict(),
+    }
