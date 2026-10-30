@@ -100,6 +100,7 @@ def test_real_api_server_interruption_and_resume_with_trusted_idempotency():
             allowed_domains=["partner.service.com"],
             trusted_idempotency_domains=["partner.service.com"],
             allowed_paths=["*"],
+            auto_heal=False,
             max_steps=10,
         )
         set_owner_policy(owner_id, policy, db_path=str(db_path))
@@ -266,8 +267,11 @@ def test_real_api_server_interruption_and_resume_with_trusted_idempotency():
                 break
             time.sleep(0.1)
 
-        p2.terminate()
-        p2.wait(timeout=5)
+        try:
+            p2.terminate()
+            p2.wait(timeout=5)
+        except Exception:
+            p2.kill()
 
         assert final_summary is not None, "Task did not complete within deadline via API"
         assert final_summary["is_complete"] is True
@@ -443,5 +447,8 @@ def test_real_api_server_interruption_with_untrusted_mutation_remains_blocked():
         assert len(approvals) == 1
         assert approvals[0]["step_id"] == s2_id
 
-        p2.terminate()
-        p2.wait(timeout=5)
+        try:
+            p2.terminate()
+            p2.wait(timeout=5)
+        except Exception:
+            p2.kill()

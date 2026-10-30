@@ -151,7 +151,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     goal TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('planning', 'running', 'paused', 'complete', 'failed')),
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    needs_attention INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS steps (
@@ -177,12 +178,15 @@ CREATE TABLE IF NOT EXISTS steps (
 
 CREATE TABLE IF NOT EXISTS drift_events (
     id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL DEFAULT 'default',
     task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     step_id TEXT NOT NULL REFERENCES steps(id) ON DELETE CASCADE,
     tool TEXT NOT NULL,
     reason TEXT NOT NULL,
     explanation TEXT,
-    detected_at TEXT NOT NULL
+    detected_at TEXT NOT NULL,
+    auto_healed INTEGER NOT NULL DEFAULT 0,
+    healed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS policies (
@@ -245,7 +249,11 @@ CREATE TABLE IF NOT EXISTS skills (
     runs INTEGER NOT NULL DEFAULT 0,
     verified_runs INTEGER NOT NULL DEFAULT 0,
     last_run_at TEXT,
-    last_status TEXT
+    last_status TEXT,
+    schedule_minutes INTEGER,
+    next_run_at TEXT,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    needs_attention INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -260,6 +268,8 @@ CREATE INDEX IF NOT EXISTS idx_llm_calls_owner ON llm_calls(owner_id, created_at
 CREATE INDEX IF NOT EXISTS idx_llm_calls_model ON llm_calls(model);
 CREATE INDEX IF NOT EXISTS idx_memories_owner_status ON memories(owner_id, status);
 CREATE INDEX IF NOT EXISTS idx_skills_owner ON skills(owner_id);
+CREATE INDEX IF NOT EXISTS idx_drift_events_owner ON drift_events(owner_id, detected_at);
+CREATE INDEX IF NOT EXISTS idx_skills_schedule ON skills(schedule_minutes, next_run_at);
 """
 
 
@@ -371,6 +381,34 @@ def init_db(db_path: Optional[str] = None) -> None:
             conn.execute("ALTER TABLE llm_calls ADD COLUMN redaction_count INTEGER DEFAULT 0;")
         if "dropped_tags" not in llm_cols:
             conn.execute("ALTER TABLE llm_calls ADD COLUMN dropped_tags INTEGER DEFAULT 0;")
+
+        # Migrate tasks table needs_attention
+        current_task_cols = {row["name"] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()}
+        if "needs_attention" not in current_task_cols:
+            try:
+                conn.execute("ALTER TABLE tasks ADD COLUMN needs_attention INTEGER NOT NULL DEFAULT 0;")
+            except sqlite3.OperationalError:
+                pass
+
+        # Migrate drift_events table columns
+        drift_cols = {row["name"] for row in conn.execute("PRAGMA table_info(drift_events)").fetchall()}
+        if "owner_id" not in drift_cols:
+            conn.execute("ALTER TABLE drift_events ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'default';")
+        if "auto_healed" not in drift_cols:
+            conn.execute("ALTER TABLE drift_events ADD COLUMN auto_healed INTEGER NOT NULL DEFAULT 0;")
+        if "healed_at" not in drift_cols:
+            conn.execute("ALTER TABLE drift_events ADD COLUMN healed_at TEXT;")
+
+        # Migrate skills table columns
+        skill_cols = {row["name"] for row in conn.execute("PRAGMA table_info(skills)").fetchall()}
+        if "schedule_minutes" not in skill_cols:
+            conn.execute("ALTER TABLE skills ADD COLUMN schedule_minutes INTEGER;")
+        if "next_run_at" not in skill_cols:
+            conn.execute("ALTER TABLE skills ADD COLUMN next_run_at TEXT;")
+        if "consecutive_failures" not in skill_cols:
+            conn.execute("ALTER TABLE skills ADD COLUMN consecutive_failures INTEGER NOT NULL DEFAULT 0;")
+        if "needs_attention" not in skill_cols:
+            conn.execute("ALTER TABLE skills ADD COLUMN needs_attention INTEGER NOT NULL DEFAULT 0;")
 
         conn.executescript(INDEXES_SQL)
 
@@ -576,6 +614,7 @@ def delete_owner_space(owner_id: str, db_path: Optional[str] = None) -> Dict[str
         conn.execute("DELETE FROM llm_calls WHERE owner_id = ?", (owner_id,))
         conn.execute("DELETE FROM memories WHERE owner_id = ?", (owner_id,))
         conn.execute("DELETE FROM skills WHERE owner_id = ?", (owner_id,))
+        conn.execute("DELETE FROM drift_events WHERE owner_id = ?", (owner_id,))
     return {"deleted_tasks": deleted_tasks}
 
 

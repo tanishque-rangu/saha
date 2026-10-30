@@ -75,6 +75,7 @@ def test_real_subprocess_interruption_and_recovery_with_trusted_idempotency():
             allowed_domains=["httpbin.org"],
             trusted_idempotency_domains=["httpbin.org"],
             allowed_paths=["*"],
+            auto_heal=False,
             max_steps=10,
         )
         set_owner_policy(owner_id, policy, db_path=str(db_path))

@@ -31,6 +31,7 @@ class Task:
     status: str  # planning | running | paused | complete | failed
     created_at: str
     updated_at: str
+    needs_attention: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -118,6 +119,7 @@ class Ledger:
                 status=row["status"],
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
+                needs_attention=bool(row["needs_attention"]) if "needs_attention" in row.keys() else False,
             )
 
     @staticmethod
@@ -148,6 +150,7 @@ class Ledger:
                     status=r["status"],
                     created_at=r["created_at"],
                     updated_at=r["updated_at"],
+                    needs_attention=bool(r["needs_attention"]) if "needs_attention" in r.keys() else False,
                 )
                 for r in rows
             ]
@@ -162,6 +165,16 @@ class Ledger:
             conn.execute(
                 "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?",
                 (status, now, task_id),
+            )
+
+    @staticmethod
+    def update_task_needs_attention(task_id: str, needs_attention: bool, db_path: Optional[str] = None) -> None:
+        init_db(db_path)
+        now = utc_now_iso()
+        with get_db(db_path) as conn:
+            conn.execute(
+                "UPDATE tasks SET needs_attention = ?, updated_at = ? WHERE id = ?",
+                (1 if needs_attention else 0, now, task_id),
             )
 
     @staticmethod
@@ -393,21 +406,41 @@ class Ledger:
         tool: str,
         reason: str,
         explanation: Optional[str] = None,
+        owner_id: Optional[str] = None,
+        auto_healed: bool = False,
+        healed_at: Optional[str] = None,
         db_path: Optional[str] = None,
     ) -> str:
         """Record an immutable drift event in the drift_events table."""
+        from backend.db import get_task_owner_id
         init_db(db_path)
         event_id = str(uuid.uuid4())
         now = utc_now_iso()
+        effective_owner = owner_id or get_task_owner_id(task_id, db_path=db_path) or "default"
         with get_db(db_path) as conn:
             conn.execute(
                 """
-                INSERT INTO drift_events (id, task_id, step_id, tool, reason, explanation, detected_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO drift_events (id, owner_id, task_id, step_id, tool, reason, explanation, detected_at, auto_healed, healed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (event_id, task_id, step_id, tool, reason, explanation, now),
+                (event_id, effective_owner, task_id, step_id, tool, reason, explanation, now, 1 if auto_healed else 0, healed_at),
             )
         return event_id
+
+    @staticmethod
+    def mark_drift_event_healed(
+        event_id: str,
+        healed_at: Optional[str] = None,
+        db_path: Optional[str] = None,
+    ) -> None:
+        """Mark a drift event as auto_healed with a timestamp."""
+        init_db(db_path)
+        now = healed_at or utc_now_iso()
+        with get_db(db_path) as conn:
+            conn.execute(
+                "UPDATE drift_events SET auto_healed = 1, healed_at = ? WHERE id = ?",
+                (now, event_id),
+            )
 
     @staticmethod
     def update_drift_explanation(
@@ -638,8 +671,8 @@ class Ledger:
         except Exception:
             probe_spec = {}
 
-        # 1. If step reached 'done' with recorded result, run deterministic probe
-        if step.status == "done" and step.result_json:
+        # 1. If step is in 'running' or 'done', re-run deterministic probe first
+        if step.status in ("running", "done"):
             probe_result = verify_step(
                 tool=step.tool,
                 args=args,
@@ -720,14 +753,35 @@ class Ledger:
 
     @staticmethod
     def recover_stale_running_tasks(db_path: Optional[str] = None) -> List[str]:
-        """Find any tasks left in 'running' state after a process crash and pause them safely."""
+        """Find any tasks left in 'running' state after a process crash and recover them."""
+        from backend.db import get_task_owner_id
+        from backend.policy import get_owner_policy
+        import threading
+
         init_db(db_path)
         with get_db(db_path) as conn:
-            rows = conn.execute("SELECT id FROM tasks WHERE status = 'running'").fetchall()
-            task_ids = [r["id"] for r in rows]
+            rows = conn.execute("SELECT id, owner_id FROM tasks WHERE status = 'running'").fetchall()
+            tasks = [(r["id"], r["owner_id"] if "owner_id" in r.keys() else "default") for r in rows]
 
-        for tid in task_ids:
+        recovered_ids = []
+        for tid, owner_id in tasks:
+            recovered_ids.append(tid)
             Ledger.recover_task_interrupted_steps(tid, db_path=db_path)
-            Ledger.update_task_status(tid, "paused", db_path=db_path)
 
-        return task_ids
+            active_steps = Ledger.get_steps(tid, include_superseded=False, db_path=db_path)
+            all_verified = bool(active_steps) and all(s.status == "verified" for s in active_steps)
+            has_pending = any(s.status == "pending" for s in active_steps)
+
+            if all_verified:
+                Ledger.update_task_status(tid, "complete", db_path=db_path)
+                continue
+
+            policy = get_owner_policy(owner_id, db_path=db_path)
+            if policy.auto_heal and has_pending:
+                from backend.executor import run_task
+                threading.Thread(target=run_task, args=(tid, db_path), daemon=True).start()
+            else:
+                Ledger.update_task_status(tid, "paused", db_path=db_path)
+                Ledger.update_task_needs_attention(tid, True, db_path=db_path)
+
+        return recovered_ids

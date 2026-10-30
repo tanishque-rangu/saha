@@ -94,7 +94,23 @@ async def lifespan(app: FastAPI):
         STARTUP_RECOVERY_STATUS["error"] = str(err)
         raise RuntimeError(error_msg) from err
 
+    # Start always-on watcher thread if enabled
+    try:
+        from backend.watcher import get_global_watcher
+        watcher = get_global_watcher()
+        watcher.start()
+    except Exception as err:
+        logger.error("Watcher startup failed: %s", err, exc_info=False)
+
     yield
+
+    # Clean shutdown of always-on watcher
+    try:
+        from backend.watcher import get_global_watcher
+        watcher = get_global_watcher()
+        watcher.stop()
+    except Exception:
+        pass
 
 
 app = FastAPI(
@@ -293,6 +309,42 @@ def run_skill_endpoint(skill_id: str, request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class ScheduleSkillRequest(BaseModel):
+    minutes: Optional[int] = Field(default=None, description="Interval in minutes (10-1440), or null to cancel.")
+
+
+@app.put("/skills/{skill_id}/schedule")
+def schedule_skill_endpoint(skill_id: str, payload: ScheduleSkillRequest, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.skills import schedule_skill
+    try:
+        updated = schedule_skill(skill_id, owner_id=owner_id, minutes=payload.minutes)
+        return {
+            "skill": updated.to_dict(),
+            "status": "scheduled" if updated.schedule_minutes else "unscheduled",
+        }
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/watcher/status")
+def get_watcher_status_endpoint(request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.watcher import get_global_watcher
+    watcher = get_global_watcher()
+    return watcher.get_status(owner_id)
+
+
+@app.get("/activity")
+def get_activity_endpoint(request: Request, limit: int = 50) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.watcher import get_owner_activity
+    items = get_owner_activity(owner_id, limit=limit)
+    return {"owner_id": owner_id, "activity": items, "count": len(items)}
 
 
 @app.exception_handler(Exception)
@@ -862,6 +914,42 @@ def run_skill_endpoint(skill_id: str, request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class ScheduleSkillRequest(BaseModel):
+    minutes: Optional[int] = Field(default=None, description="Interval in minutes (10-1440), or null to cancel.")
+
+
+@app.put("/skills/{skill_id}/schedule")
+def schedule_skill_endpoint(skill_id: str, payload: ScheduleSkillRequest, request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.skills import schedule_skill
+    try:
+        updated = schedule_skill(skill_id, owner_id=owner_id, minutes=payload.minutes)
+        return {
+            "skill": updated.to_dict(),
+            "status": "scheduled" if updated.schedule_minutes else "unscheduled",
+        }
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/watcher/status")
+def get_watcher_status_endpoint(request: Request) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.watcher import get_global_watcher
+    watcher = get_global_watcher()
+    return watcher.get_status(owner_id)
+
+
+@app.get("/activity")
+def get_activity_endpoint(request: Request, limit: int = 50) -> Dict[str, Any]:
+    _, owner_id = get_owner_info(request)
+    from backend.watcher import get_owner_activity
+    items = get_owner_activity(owner_id, limit=limit)
+    return {"owner_id": owner_id, "activity": items, "count": len(items)}
 
 
 @app.exception_handler(Exception)
