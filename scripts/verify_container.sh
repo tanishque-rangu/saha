@@ -128,7 +128,7 @@ echo "[3.2] Waiting up to 30s for Container 1 /health to report ok..."
 READY=0
 for i in $(seq 1 30); do
     HEALTH_DATA=$(curl -s "http://127.0.0.1:${PORT}/health" || true)
-    if echo "$HEALTH_DATA" | grep -q '"status":"ok"'; then
+    if echo "$HEALTH_DATA" | grep -Eq '"status":\s*"ok"'; then
         READY=1
         echo "Container 1 healthy after ${i}s: $HEALTH_DATA"
         break
@@ -143,7 +143,7 @@ if [ "$READY" -ne 1 ]; then
 fi
 
 # Verify data_persistent is true
-echo "$HEALTH_DATA" | grep -q '"data_persistent":true' || {
+echo "$HEALTH_DATA" | grep -Eq '"data_persistent":\s*true' || {
     echo "ERROR: Health check did not report 'data_persistent: true'"
     exit 1
 }
@@ -187,7 +187,7 @@ steps = Ledger.add_steps(task.id, [
         'depends_on': []
     }
 ])
-Ledger.mark_step_verified(steps[0].id)
+Ledger.mark_step_verified(steps[0].id, {'content_matches': True})
 Ledger.update_task_status(task.id, 'complete')
 print(task.id)
 ")
@@ -212,7 +212,7 @@ fi
 # 3. With authorized token -> 200
 TASK_DETAIL=$(curl -s -f -H "X-Saha-Owner: $OWNER_TOKEN" "http://127.0.0.1:${PORT}/tasks/$TASK_ID")
 echo "Authorized task detail: $TASK_DETAIL"
-echo "$TASK_DETAIL" | grep -q '"is_complete":true' || {
+echo "$TASK_DETAIL" | grep -Eq '"is_complete":\s*true' || {
     echo "ERROR: Task is not complete in Container 1"
     exit 1
 }
@@ -236,7 +236,7 @@ echo "[3.7] Waiting up to 30s for Container 2 /health to report ok..."
 READY_2=0
 for i in $(seq 1 30); do
     HEALTH_DATA_2=$(curl -s "http://127.0.0.1:${PORT}/health" || true)
-    if echo "$HEALTH_DATA_2" | grep -q '"status":"ok"'; then
+    if echo "$HEALTH_DATA_2" | grep -Eq '"status":\s*"ok"'; then
         READY_2=1
         echo "Container 2 healthy after ${i}s: $HEALTH_DATA_2"
         break
@@ -257,7 +257,7 @@ echo "$TASK_DETAIL_2" | grep -q "$TASK_ID" || {
     echo "ERROR: Task $TASK_ID missing from Container 2"
     exit 1
 }
-echo "$TASK_DETAIL_2" | grep -q '"is_complete":true' || {
+echo "$TASK_DETAIL_2" | grep -Eq '"is_complete":\s*true' || {
     echo "ERROR: Task $TASK_ID is not complete on Container 2"
     exit 1
 }
