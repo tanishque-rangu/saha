@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Saha — Persistent Personal AI</title>
+  <title>Saha &bull; Persistent Personal AI</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Google Fonts: Outfit, Inter, JetBrains Mono -->
@@ -41,207 +41,582 @@
     html, body {
       max-width: 100vw;
       overflow-x: hidden;
-      background-color: #030712;
-      color: #f3f4f6;
+      background-color: #101715;
+      color: #F2F5F2;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
     .glass-panel {
-      background: rgba(17, 24, 39, 0.75);
+      background: #19221F;
       backdrop-filter: blur(12px);
-      border: 1px solid rgba(55, 65, 81, 0.5);
+      border: 1px solid #273631;
+    }
+    .glow-jade {
+      box-shadow: 0 0 24px -5px rgba(114, 214, 179, 0.22);
     }
     .glow-emerald {
-      box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.3);
+      box-shadow: 0 0 24px -5px rgba(114, 214, 179, 0.22);
     }
     .glow-amber {
-      box-shadow: 0 0 25px -5px rgba(245, 158, 11, 0.35);
+      box-shadow: 0 0 24px -5px rgba(245, 158, 11, 0.25);
+    }
+    .line-through-title {
+      text-decoration: line-through;
+    }
+    .scrollbar-none::-webkit-scrollbar {
+      display: none;
+    }
+    .scrollbar-none {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    /* Subtle midnight-and-jade scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #101715;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #273631;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #364A43;
     }
   </style>
 </head>
-<body class="min-h-screen flex flex-col font-sans selection:bg-emerald-500 selection:text-black overflow-x-hidden">
+<body class="min-h-screen flex flex-col font-sans selection:bg-[#72D6B3] selection:text-[#101715] overflow-x-hidden">
 
   <!-- Header -->
-  <header class="border-b border-gray-800 bg-gray-950/80 backdrop-blur sticky top-0 z-40">
+  <header class="border-b border-[#22312B] bg-[#101715]/95 backdrop-blur sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
       <div class="w-full lg:w-auto min-w-0">
         <div class="flex flex-wrap items-center gap-2 sm:gap-3">
-          <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-300 flex items-center justify-center font-display font-bold text-black text-xl shadow-lg shadow-emerald-500/20">
-            S
+          <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center p-0.5 shadow-md shadow-black/40 flex-shrink-0 overflow-hidden">
+            <img src="/assets/logo.png" alt="Saha Logo" class="w-full h-full object-contain" />
           </div>
-          <span class="font-display font-bold text-2xl tracking-tight text-white">Saha</span>
-          <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Persistent AI</span>
-          <span id="demoBadge" class="hidden px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30">Demo Mode</span>
-          <span id="ownerBadge" class="px-2 py-0.5 text-[11px] font-mono rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/30" title="Your isolated private space bearer token">Space: --</span>
+          <span class="font-display font-bold text-2xl tracking-tight text-[#F2F5F2]">Saha</span>
+          <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-[#72D6B3]/10 text-[#72D6B3] border border-[#72D6B3]/30">Persistent AI</span>
+          <span id="demoBadge" class="hidden px-2.5 py-0.5 text-xs font-semibold rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30">Demo Mode</span>
+          <span id="ownerBadge" class="px-2.5 py-0.5 text-[11px] font-mono rounded-full bg-[#19221F] text-[#95A7A0] border border-[#273631]" title="Your isolated private space bearer token">Space: --</span>
         </div>
-        <p class="text-xs sm:text-sm text-gray-400 mt-1 font-medium break-words">
-          <span class="text-emerald-400 font-semibold">Tagline:</span> Your work should never have to start over just because your AI does.
+        <p class="text-xs sm:text-sm text-[#95A7A0] mt-1 font-medium break-words">
+          <span class="text-[#72D6B3] font-semibold">Tagline:</span> Your work should never have to start over just because your AI does.
         </p>
       </div>
 
       <!-- Action & Controls Bar -->
       <div class="flex flex-wrap items-center gap-2 sm:gap-3 text-xs w-full lg:w-auto justify-start lg:justify-end">
         <!-- Approvals Pill -->
-        <button id="approvalsNavBtn" onclick="openApprovalsModal()" class="px-3 py-1.5 rounded-lg bg-gray-900 border border-gray-800 hover:border-gray-700 text-gray-300 hover:text-white transition flex items-center gap-1.5 font-medium">
+        <button id="approvalsNavBtn" onclick="openApprovalsModal()" class="px-3 py-1.5 rounded-lg bg-[#19221F] border border-[#273631] hover:border-amber-500/40 text-[#F2F5F2] hover:text-white transition flex items-center gap-1.5 font-medium text-xs">
           <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
           Approvals
           <span id="pendingApprovalsCount" class="hidden px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-black">0</span>
         </button>
 
         <!-- Privacy Egress Pill -->
-        <button onclick="openEgressModal()" class="px-3 py-1.5 rounded-lg bg-gray-900 border border-gray-800 hover:border-gray-700 text-gray-300 hover:text-white transition flex items-center gap-1.5 font-medium" title="Privacy ledger: Zero raw content stored">
-          <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+        <button onclick="openEgressModal()" class="px-3 py-1.5 rounded-lg bg-[#19221F] border border-[#273631] hover:border-[#72D6B3]/40 text-[#F2F5F2] hover:text-white transition flex items-center gap-1.5 font-medium text-xs" title="Privacy ledger: Zero raw content stored">
+          <svg class="w-3.5 h-3.5 text-[#72D6B3]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
           Privacy Ledger
         </button>
 
         <!-- Pair Link Button -->
-        <button onclick="openPairModal()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition flex items-center gap-1.5">
+        <button onclick="openPairModal()" class="px-3 py-1.5 rounded-lg bg-[#1E2B26] hover:bg-[#273832] border border-[#72D6B3]/35 text-[#72D6B3] hover:text-[#8AE0C2] font-medium transition flex items-center gap-1.5 text-xs shadow-sm">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
           Pair Device
-        </button>
-
-        <!-- Delete Space Button -->
-        <button onclick="confirmDeleteSpace()" class="px-2.5 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 border border-rose-900/60 text-rose-300 font-medium transition" title="Wipe all tasks, files, and policy data for this private space">
-          Reset Space
-        </button>
-
-        <button onclick="refreshData()" class="p-2 text-gray-400 hover:text-white transition ml-1" title="Refresh">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
         </button>
       </div>
     </div>
   </header>
 
-  <!-- Main Content -->
-  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+  <!-- Main Content Layout -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full space-y-6">
 
-    <!-- Goal Input Section -->
-    <section class="glass-panel rounded-2xl p-5 shadow-xl">
-      <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-2">New Goal Input</h2>
-      <div class="flex flex-col sm:flex-row gap-3">
-        <textarea id="goalInput" rows="2" maxlength="300" placeholder="Describe the goal for Saha to plan, execute, and verify against reality..." class="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"></textarea>
-        <button id="createTaskBtn" onclick="createTask()" class="sm:self-stretch px-6 py-3 bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-black font-semibold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 whitespace-nowrap">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-          Plan & Create
-        </button>
-      </div>
+    <!-- Workspace Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-      <!-- Example Goal Chips -->
-      <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
-        <span class="text-gray-400 font-medium">Examples:</span>
-        <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg border border-gray-700 transition text-left max-w-full break-words">
-          Hyderabad facts summary & reachability check
-        </button>
-        <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg border border-gray-700 transition text-left max-w-full break-words">
-          Write state verification report and test connectivity
-        </button>
-        <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg border border-gray-700 transition text-left max-w-full break-words">
-          Synthesize ledger architecture notes and verify hashes
-        </button>
-      </div>
-    </section>
+      <!-- Left Column: Navigation Switcher, Watcher Chip & Tasks Sidebar (4 cols) -->
+      <div class="lg:col-span-4 space-y-4">
 
-    <!-- Workspace & Task Inspector Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Section Switcher in Sidebar (compact tab row on phones) -->
+        <nav id="sectionNav" class="glass-panel rounded-2xl p-2 flex flex-row lg:flex-col gap-1.5 overflow-x-auto scrollbar-none" aria-label="Section Switcher">
+          <button id="tabTasks" onclick="switchSection('tasks')" class="nav-tab flex-1 lg:flex-initial flex items-center justify-center lg:justify-start gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition whitespace-nowrap bg-[#72D6B3]/15 text-[#72D6B3] border border-[#72D6B3]/40 shadow-sm">
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+            <span>Tasks</span>
+          </button>
+          <button id="tabActivity" onclick="switchSection('activity')" class="nav-tab flex-1 lg:flex-initial flex items-center justify-center lg:justify-start gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition whitespace-nowrap text-gray-400 hover:text-white hover:bg-gray-800/60 border border-transparent">
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            <span>Activity</span>
+          </button>
+          <button id="tabMemory" onclick="switchSection('memory')" class="nav-tab flex-1 lg:flex-initial flex items-center justify-center lg:justify-start gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition whitespace-nowrap text-gray-400 hover:text-white hover:bg-gray-800/60 border border-transparent">
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+            <span>Memory</span>
+          </button>
+          <button id="tabRoutines" onclick="switchSection('routines')" class="nav-tab flex-1 lg:flex-initial flex items-center justify-center lg:justify-start gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition whitespace-nowrap text-gray-400 hover:text-white hover:bg-gray-800/60 border border-transparent">
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            <span>Routines</span>
+          </button>
+          <button id="tabPrivacy" onclick="switchSection('privacy')" class="nav-tab flex-1 lg:flex-initial flex items-center justify-center lg:justify-start gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition whitespace-nowrap text-gray-400 hover:text-white hover:bg-gray-800/60 border border-transparent">
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            <span>Privacy</span>
+          </button>
+        </nav>
 
-      <!-- Left Column: Tasks List (4 cols) -->
-      <div class="lg:col-span-4 space-y-4 order-2 lg:order-1">
-        <div class="glass-panel rounded-2xl p-4">
-          <div class="flex items-center justify-between pb-3 border-b border-gray-800">
-            <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Tasks Ledger</h3>
-            <span id="taskCountBadge" class="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full font-mono">0</span>
+        <!-- Watcher Status Chip in Sidebar -->
+        <div id="sidebarWatcherChip" class="glass-panel rounded-xl p-3 border border-[#273631] flex items-center gap-2.5 text-xs text-[#95A7A0]">
+          <span class="relative flex h-2.5 w-2.5 flex-shrink-0">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#72D6B3] opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#72D6B3]"></span>
+          </span>
+          <span id="sidebarWatcherStatusText" class="truncate font-medium text-[#F2F5F2]">Watching, checks every 60s, auto-heals left 3</span>
+        </div>
+
+        <!-- Tasks Ledger in Sidebar (Always present in DOM; active by default) -->
+        <div id="tasksSidebarCard" class="glass-panel rounded-2xl p-4 border border-[#273631]">
+          <div class="flex items-center justify-between pb-3 border-b border-[#273631]">
+            <h3 class="text-xs font-semibold text-[#95A7A0] uppercase tracking-wider">Tasks Ledger</h3>
+            <span id="taskCountBadge" class="text-xs bg-[#141C19] text-[#72D6B3] border border-[#273631] px-2.5 py-0.5 rounded-full font-mono font-medium">0</span>
           </div>
           <div id="tasksList" class="mt-3 space-y-2 max-h-[600px] overflow-y-auto pr-1">
             <div class="text-xs text-gray-500 py-4 text-center">Loading tasks ledger...</div>
           </div>
         </div>
+
+        <!-- Sidebar Helper Notes for Non-Task Sections (Quiet & Informative) -->
+        <div id="sidebarInfoCard" class="hidden glass-panel rounded-2xl p-4 text-xs text-gray-400 space-y-2">
+          <div id="sidebarInfoTitle" class="font-semibold text-gray-200 uppercase tracking-wider text-[11px]">Personal AI Space</div>
+          <p id="sidebarInfoText" class="text-gray-400 text-xs leading-relaxed">
+            All memories, routines, and telemetry are isolated to your private bearer token.
+          </p>
+        </div>
+
       </div>
 
-      <!-- Right Column: Active Task Timeline & Inspector (8 cols) -->
-      <div class="lg:col-span-8 space-y-6 order-1 lg:order-2">
+      <!-- Right Column: Primary Section Views (8 cols) -->
+      <div class="lg:col-span-8 space-y-6">
 
-        <!-- Selected Task Card -->
-        <div id="taskDetailCard" class="glass-panel rounded-2xl p-6 hidden space-y-5">
-          <!-- Task Header -->
-          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-gray-800">
-            <div>
-              <div class="flex items-center gap-2">
-                <span id="taskStatusPill" class="px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-gray-800 text-gray-300">
-                  Planning
-                </span>
-                <span id="taskIdLabel" class="text-xs text-gray-400 font-mono break-all">Task ID: --</span>
+        <!-- ================= SECTION: TASKS ================= -->
+        <div id="sectionTasks" class="space-y-6">
+
+          <!-- Goal Input & Plan Synthesis Section -->
+          <section id="goalSection" class="glass-panel rounded-2xl p-5 sm:p-6 space-y-4 glow-jade border border-[#273631]">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-[#273631] pb-3.5">
+              <div>
+                <h2 class="text-base sm:text-lg font-bold text-[#F2F5F2] flex items-center gap-2 font-display">
+                  <span>Autonomous Task Orchestration & Plan Synthesis</span>
+                </h2>
+                <p class="text-xs text-[#95A7A0] mt-0.5 leading-relaxed">Dual-model architecture: Nemotron Ultra-550B generates deterministic multi-step plans with verification probes.</p>
               </div>
-              <h2 id="taskGoalLabel" class="text-lg font-bold text-white mt-1.5 font-display break-words">--</h2>
+              <span class="text-[11px] font-mono text-[#72D6B3] bg-[#72D6B3]/10 px-2.5 py-1 rounded-full border border-[#72D6B3]/30 font-semibold">
+                PLANNER Active
+              </span>
             </div>
 
-            <!-- Task Actions -->
-            <div class="flex flex-wrap items-center gap-2">
-              <button id="runTaskBtn" onclick="runActiveTask()" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-md">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                Run Task
-              </button>
-              <button id="sabotageBtn" onclick="sabotageActiveTask()" class="px-3.5 py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-semibold rounded-lg transition flex items-center gap-1.5" title="Deletes artifact directly from disk without touching database">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                Simulate Drift
-              </button>
-              <button id="resumeBtn" onclick="resumeActiveTask()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-md">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                Resume & Reconcile
+            <!-- Goal Input Form -->
+            <div class="flex flex-col sm:flex-row gap-3">
+              <input 
+                id="goalInput" 
+                type="text" 
+                placeholder="What should Saha accomplish? (e.g. Write a summary, check network connectivity...)"
+                class="flex-1 bg-[#121B18] border border-[#273631] rounded-xl px-4 py-2.5 text-sm text-[#F2F5F2] placeholder-[#657871] focus:outline-none focus:border-[#72D6B3] transition shadow-inner font-sans"
+                maxlength="300"
+                onkeydown="if(event.key === 'Enter') createTask()"
+              />
+              <button 
+                id="createTaskBtn"
+                onclick="createTask()" 
+                class="px-5 py-2.5 rounded-xl bg-[#72D6B3] hover:bg-[#8AE0C2] text-[#101715] font-bold text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-[#72D6B3]/20 whitespace-nowrap font-display"
+              >
+                <span>Plan Task</span>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
               </button>
             </div>
+
+            <!-- Quick Demo Goal Chips -->
+            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 pt-1 text-[11px]">
+              <span class="text-[#95A7A0] font-semibold mr-1">Examples:</span>
+              <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-[#141C19] hover:bg-[#1B2723] text-[#95A7A0] hover:text-[#F2F5F2] rounded-lg border border-[#273631] transition text-left max-w-full break-words">
+                Create Hyderabad facts files, combine summary, verify reachability
+              </button>
+              <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-[#141C19] hover:bg-[#1B2723] text-[#95A7A0] hover:text-[#F2F5F2] rounded-lg border border-[#273631] transition text-left max-w-full break-words">
+                Write state verification report and test connectivity
+              </button>
+              <button onclick="setGoalChip(this)" class="px-2.5 py-1 bg-[#141C19] hover:bg-[#1B2723] text-[#95A7A0] hover:text-[#F2F5F2] rounded-lg border border-[#273631] transition text-left max-w-full break-words">
+                Synthesize ledger architecture notes and verify hashes
+              </button>
+            </div>
+          </section>
+
+          <!-- Selected Task Card -->
+          <div id="taskDetailCard" class="glass-panel rounded-2xl p-6 hidden space-y-5 border border-[#273631]">
+            <!-- Task Header -->
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[#273631]">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span id="taskStatusPill" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#141C19] text-[#95A7A0] border border-[#273631] shadow-sm">
+                    Planning
+                  </span>
+                  <span id="taskIdLabel" class="text-xs text-[#95A7A0] font-mono break-all">Task ID: --</span>
+                </div>
+                <h2 id="taskGoalLabel" class="text-lg sm:text-xl font-bold text-[#F2F5F2] mt-1.5 font-display break-words tracking-tight">--</h2>
+              </div>
+
+              <!-- Task Actions -->
+              <div class="flex flex-wrap items-center gap-2">
+                <button id="saveAsRoutineBtn" onclick="openSaveAsRoutineModal()" class="hidden px-3.5 py-2 bg-[#1B2723] hover:bg-[#23332E] border border-[#72D6B3]/35 text-[#72D6B3] text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-sm">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+                  Save as Routine
+                </button>
+                <button id="runTaskBtn" onclick="runActiveTask()" class="px-3.5 py-2 bg-[#141C19] hover:bg-[#1C2723] border border-[#72D6B3]/40 text-[#72D6B3] text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-sm">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  Run Task
+                </button>
+                <button id="sabotageBtn" onclick="sabotageActiveTask()" class="px-3.5 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-300 hover:text-red-200 text-xs font-semibold rounded-lg transition flex items-center gap-1.5" title="Deletes artifact directly from disk without touching database">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  Simulate Drift
+                </button>
+                <button id="resumeBtn" onclick="resumeActiveTask()" class="px-4 py-2 bg-[#72D6B3] hover:bg-[#8AE0C2] text-[#101715] text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-md shadow-[#72D6B3]/15">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                  Resume & Reconcile
+                </button>
+              </div>
+            </div>
+
+            <!-- Prominent Reality Drift Banner -->
+            <div id="driftBanner" class="hidden rounded-xl border border-amber-500/40 bg-amber-950/25 p-4 glow-amber space-y-3">
+              <div class="flex items-start justify-between">
+                <div class="flex items-center gap-2.5 text-amber-400 font-bold text-sm">
+                  <svg class="w-5 h-5 text-amber-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                  <span>REALITY DRIFT DETECTED</span>
+                </div>
+                <span class="text-xs font-mono text-amber-300/80 bg-amber-500/10 px-2 py-0.5 rounded">FAST Model Active</span>
+              </div>
+              <div class="bg-[#101715]/90 rounded-lg p-3 border border-amber-500/20 text-xs space-y-1.5">
+                <div class="text-[#95A7A0] font-semibold uppercase text-[10px] tracking-wider">Fast Auditor Explanation (Nano-30B):</div>
+                <p id="driftExplanation" class="text-amber-200 text-sm font-medium italic">--</p>
+                <div id="driftDetails" class="text-[#95A7A0] font-mono text-[11px] pt-1 border-t border-[#25352F]">--</div>
+              </div>
+            </div>
+
+            <!-- Policy Blocked Alert (if any steps are blocked) -->
+            <div id="policyBlockedAlert" class="hidden rounded-xl border border-amber-500/40 bg-amber-950/25 p-4 space-y-2 glow-amber">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 text-amber-300 font-bold text-sm">
+                  <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                  <span>EXECUTION PAUSED: ACTION BLOCKED BY POLICY</span>
+                </div>
+                <button onclick="openApprovalsModal()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black rounded-lg text-xs font-bold transition shadow-sm">
+                  Review & Approve
+                </button>
+              </div>
+              <p class="text-xs text-amber-200/90 leading-relaxed">
+                One or more steps attempted an action outside your space's security policy. Review pending approvals to allow or deny.
+              </p>
+            </div>
+
+            
+            <!-- Task Output Panel (Show text produced by read_file in completed task) -->
+            <div id="taskOutputPanel" class="hidden rounded-2xl border border-[#72D6B3]/40 bg-[#141C19] p-5 space-y-3.5 shadow-lg shadow-[#72D6B3]/5">
+              <div class="flex items-center justify-between pb-2.5 border-b border-[#273631]">
+                <div class="flex items-center gap-2">
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#72D6B3] shadow-sm shadow-[#72D6B3]/50"></div>
+                  <span class="text-xs sm:text-sm font-bold uppercase tracking-wider text-[#72D6B3] font-display">Task Output</span>
+                  <span id="taskOutputPathBadge" class="text-xs font-mono text-[#F2F5F2] bg-[#0E1513] px-2.5 py-1 rounded-md border border-[#273631]">--</span>
+                </div>
+                <button onclick="copyTaskOutput()" id="copyTaskOutputBtn" class="px-3 py-1 bg-[#19221F] hover:bg-[#202E29] border border-[#273631] text-[#F2F5F2] hover:text-white rounded-lg text-xs font-mono transition flex items-center gap-1.5 shadow-sm">
+                  <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+                  <span>Copy</span>
+                </button>
+              </div>
+
+              <!-- Output Content Pre -->
+              <pre id="taskOutputContent" class="text-xs sm:text-[13px] font-mono text-[#F2F5F2] bg-[#0A110F] p-4 sm:p-5 rounded-xl border border-[#22332D] overflow-x-auto whitespace-pre-wrap max-h-96 leading-relaxed selection:bg-[#72D6B3] selection:text-[#101715] tracking-normal">--</pre>
+
+              <!-- Footer with step context and bytes read -->
+              <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-[#95A7A0] pt-1">
+                <span id="taskOutputStepLabel">Output from read_file step</span>
+                <span id="taskOutputBytesLabel">0 bytes read</span>
+              </div>
+            </div>
+
+            <!-- Steps Timeline -->
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-semibold text-[#95A7A0] uppercase tracking-wider">Audit Timeline & Verification Probes</h3>
+                <span id="timelineStats" class="text-xs text-[#95A7A0] font-mono">0 steps</span>
+              </div>
+
+              <div id="stepsTimeline" class="space-y-3">
+                <!-- Rendered Step Cards -->
+              </div>
+            </div>
+
           </div>
 
-          <!-- Prominent Reality Drift Banner -->
-          <div id="driftBanner" class="hidden rounded-xl border border-amber-500/50 bg-amber-950/30 p-4 glow-amber space-y-3">
-            <div class="flex items-start justify-between">
-              <div class="flex items-center gap-2.5 text-amber-400 font-bold text-sm">
-                <svg class="w-5 h-5 text-amber-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-                <span>REALITY DRIFT DETECTED</span>
-              </div>
-              <span class="text-xs font-mono text-amber-300/80 bg-amber-500/10 px-2 py-0.5 rounded">FAST Model Active</span>
+          <!-- Empty State -->
+          <div id="emptyTaskPlaceholder" class="glass-panel rounded-2xl p-12 text-center space-y-3 border border-[#273631]">
+            <div class="w-12 h-12 rounded-full bg-[#141C19] border border-[#273631] mx-auto flex items-center justify-center text-[#95A7A0]">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
             </div>
-            <div class="bg-gray-900/80 rounded-lg p-3 border border-amber-500/20 text-xs space-y-1.5">
-              <div class="text-gray-400 font-semibold uppercase text-[10px] tracking-wider">Fast Auditor Explanation (Nano-30B):</div>
-              <p id="driftExplanation" class="text-amber-200 text-sm font-medium italic">--</p>
-              <div id="driftDetails" class="text-gray-400 font-mono text-[11px] pt-1 border-t border-gray-800">--</div>
-            </div>
-          </div>
-
-          <!-- Policy Blocked Alert (if any steps are blocked) -->
-          <div id="policyBlockedAlert" class="hidden rounded-xl border border-purple-500/50 bg-purple-950/30 p-4 space-y-2">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2 text-purple-300 font-bold text-sm">
-                <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                <span>EXECUTION PAUSED: ACTION BLOCKED BY POLICY</span>
-              </div>
-              <button onclick="openApprovalsModal()" class="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-semibold transition">
-                Review & Approve
-              </button>
-            </div>
-            <p class="text-xs text-purple-200">
-              One or more steps attempted an action outside your space's security policy. Review pending approvals to allow or deny.
-            </p>
-          </div>
-
-          <!-- Steps Timeline -->
-          <div class="space-y-3">
-            <div class="flex items-center justify-between">
-              <h3 class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Audit Timeline & Verification Probes</h3>
-              <span id="timelineStats" class="text-xs text-gray-500 font-mono">0 steps</span>
-            </div>
-
-            <div id="stepsTimeline" class="space-y-3">
-              <!-- Rendered Step Cards -->
-            </div>
+            <h3 class="text-sm font-semibold text-[#F2F5F2]">No Task Selected</h3>
+            <p class="text-xs text-[#95A7A0] max-w-sm mx-auto leading-relaxed">Select an existing task from the ledger on the left, or input a new goal above to generate an execution plan.</p>
           </div>
 
         </div>
 
-        <!-- Empty State -->
-        <div id="emptyTaskPlaceholder" class="glass-panel rounded-2xl p-12 text-center space-y-3">
-          <div class="w-12 h-12 rounded-full bg-gray-900 mx-auto flex items-center justify-center text-gray-500">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        <!-- ================= SECTION: ACTIVITY ================= -->
+        <div id="sectionActivity" class="hidden space-y-5">
+          <!-- Top Activity Watcher Chip -->
+          <div id="activityWatcherChip" class="glass-panel rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div class="flex items-center gap-3">
+              <span class="relative flex h-2.5 w-2.5 flex-shrink-0">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <div>
+                <span id="activityWatcherStatusText" class="font-bold text-gray-200">Watching, checks every 60s, auto-heals left 3</span>
+                <div class="text-[11px] text-gray-500">Background loop verifies completed & paused tasks against physical probes.</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 font-mono text-[11px]">
+              <span id="activityWatcherBudgetDay" class="px-2.5 py-1 rounded-lg bg-gray-900 border border-gray-800 text-gray-400">Day: 10 heals left</span>
+            </div>
           </div>
-          <h3 class="text-sm font-semibold text-gray-300">No Task Selected</h3>
-          <p class="text-xs text-gray-500 max-w-sm mx-auto">Select an existing task from the ledger on the left, or input a new goal above to generate an execution plan.</p>
+
+          <!-- Activity Feed Container -->
+          <div class="glass-panel rounded-2xl p-6 space-y-4">
+            <div class="flex items-center justify-between pb-3 border-b border-gray-800">
+              <div>
+                <h2 class="text-base font-bold text-white font-display">Activity Stream</h2>
+                <p class="text-xs text-gray-400 mt-0.5">Real-time watcher telemetry, drift events, autonomous heals, and routine dispatches.</p>
+              </div>
+              <span id="activityCountBadge" class="text-xs bg-gray-800 text-gray-400 px-2.5 py-0.5 rounded-full font-mono">0 events</span>
+            </div>
+
+            <div id="activityFeedList" class="space-y-3">
+              <div class="text-xs text-gray-500 py-8 text-center">Loading activity stream...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= SECTION: MEMORY ================= -->
+        <div id="sectionMemory" class="hidden space-y-6">
+          <div class="glass-panel rounded-2xl p-6 space-y-5">
+            <div>
+              <h2 class="text-base font-bold text-white font-display">Space Memory</h2>
+              <p class="text-xs text-gray-400 mt-1">Saha uses these notes when planning and writing. They stay in your space.</p>
+            </div>
+
+            <!-- Add Note Card -->
+            <div class="p-4 rounded-xl bg-gray-950/60 border border-gray-800 space-y-3">
+              <h3 class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Add Note</h3>
+              <div class="space-y-2">
+                <textarea 
+                  id="newMemoryText" 
+                  maxlength="300" 
+                  rows="2" 
+                  oninput="updateMemoryCounter()"
+                  placeholder="e.g. Always generate concise test summaries, prefer Python over Bash, keep port 8000 default..." 
+                  class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3.5 py-2 text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-emerald-500 transition resize-none font-sans"
+                ></textarea>
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                  <div class="flex items-center gap-2">
+                    <label class="text-[11px] text-gray-400 font-medium">Kind:</label>
+                    <select id="newMemoryKind" class="bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-lg px-2 py-1 focus:outline-none">
+                      <option value="note">Note</option>
+                      <option value="fact">Fact</option>
+                      <option value="preference">Preference</option>
+                    </select>
+                  </div>
+                  <div class="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                    <span id="memoryCharCounter" class="text-[11px] font-mono text-gray-500">0 / 300</span>
+                    <button id="addMemoryBtn" onclick="handleAddMemory()" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition shadow-sm">
+                      Add Note
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div id="memoryAddError" class="hidden text-xs text-rose-400 pt-1"></div>
+            </div>
+
+            <!-- Proposed by Saha Block -->
+            <div class="p-4 rounded-xl bg-indigo-950/20 border border-indigo-500/30 space-y-3">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                  Proposed by Saha
+                </h3>
+                <span id="proposalsCountBadge" class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300">0 proposals</span>
+              </div>
+              <p class="text-xs text-gray-400">Suggestions automatically detected during task verification. Approve to incorporate into your planning prompts.</p>
+              
+              <div id="proposedMemoriesList" class="space-y-2 pt-1">
+                <div class="text-xs text-gray-500 py-3 text-center">No pending memory proposals.</div>
+              </div>
+            </div>
+
+            <!-- Active Memories List -->
+            <div class="space-y-3 pt-2 border-t border-gray-800">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-semibold text-gray-300 uppercase tracking-wider">Active Space Notes</h3>
+                <span id="activeMemoriesCountBadge" class="text-xs font-mono text-gray-500">0 / 50 active</span>
+              </div>
+              <div id="activeMemoriesList" class="space-y-2">
+                <div class="text-xs text-gray-500 py-4 text-center">Loading memories...</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ================= SECTION: ROUTINES ================= -->
+        <div id="sectionRoutines" class="hidden space-y-6">
+          <div class="glass-panel rounded-2xl p-6 space-y-5">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-gray-800">
+              <div>
+                <h2 class="text-base font-bold text-white font-display">Saved Routines</h2>
+                <p class="text-xs text-gray-400 mt-0.5">Recurring skills saved from verified tasks. The background watcher executes due schedules.</p>
+              </div>
+              <span id="routinesCountBadge" class="text-xs bg-gray-800 text-gray-400 px-2.5 py-0.5 rounded-full font-mono">0 saved</span>
+            </div>
+
+            <div id="routinesList" class="space-y-3">
+              <div class="text-xs text-gray-500 py-6 text-center">Loading saved routines...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= SECTION: PRIVACY ================= -->
+        <div id="sectionPrivacy" class="hidden space-y-6">
+          
+          <!-- (a) Permissions Card -->
+          <div class="glass-panel rounded-2xl p-6 space-y-4">
+            <div class="flex items-center justify-between pb-3 border-b border-gray-800">
+              <div>
+                <h2 class="text-base font-bold text-white font-display">Permissions & Policy</h2>
+                <p class="text-xs text-gray-400 mt-0.5">Deterministic execution boundaries enforced in local code.</p>
+              </div>
+              <span class="text-xs font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Local Policy</span>
+            </div>
+
+            <!-- Auto-Heal Toggle -->
+            <div class="p-4 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-between gap-4">
+              <div>
+                <div class="text-xs font-bold text-gray-200">Autonomous Auto-Heal on Drift</div>
+                <div class="text-[11px] text-gray-400 mt-0.5">When reality drift is detected by probes, attempt bounded single-step healing within hourly budget.</div>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input type="checkbox" id="privacyAutoHealToggle" onchange="toggleAutoHealPolicy(this.checked)" class="sr-only peer">
+                <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+              </label>
+            </div>
+            <div id="policyUpdateMsg" class="hidden text-xs py-1"></div>
+
+            <!-- Policy Rules Display -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pt-1">
+              <div class="p-3 rounded-xl bg-gray-950/70 border border-gray-800 space-y-2">
+                <div class="text-[10px] uppercase font-bold text-gray-400">Permitted Tools</div>
+                <div id="policyAllowedTools" class="flex flex-wrap gap-1 font-mono text-[11px] text-emerald-400">
+                  <span class="px-2 py-0.5 rounded bg-gray-900 border border-gray-800">Loading...</span>
+                </div>
+              </div>
+              <div class="p-3 rounded-xl bg-gray-950/70 border border-gray-800 space-y-2">
+                <div class="text-[10px] uppercase font-bold text-gray-400">Permitted Domains</div>
+                <div id="policyAllowedDomains" class="flex flex-wrap gap-1 font-mono text-[11px] text-indigo-400">
+                  <span class="px-2 py-0.5 rounded bg-gray-900 border border-gray-800">Loading...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- (b) What Left Your Space Card -->
+          <div class="glass-panel rounded-2xl p-6 space-y-4">
+            <div>
+              <h2 class="text-base font-bold text-white font-display">What Left Your Space</h2>
+              <p class="text-xs text-gray-400 mt-1">Prompts and responses are not stored. Only character lengths, redactions, and call metadata are audited in the privacy ledger.</p>
+            </div>
+
+            <!-- Compact Metrics Row -->
+            <div class="grid grid-cols-3 gap-3">
+              <div class="bg-gray-950/80 p-3 rounded-xl border border-gray-800">
+                <div class="text-[10px] uppercase font-bold text-gray-400">Total Calls</div>
+                <div id="privacyEgressCalls" class="text-base sm:text-lg font-bold font-mono text-white mt-0.5">0</div>
+              </div>
+              <div class="bg-gray-950/80 p-3 rounded-xl border border-gray-800">
+                <div class="text-[10px] uppercase font-bold text-gray-400">Chars Sent / Received</div>
+                <div id="privacyEgressChars" class="text-base sm:text-lg font-bold font-mono text-emerald-400 mt-0.5">0 / 0</div>
+              </div>
+              <div class="bg-gray-950/80 p-3 rounded-xl border border-gray-800">
+                <div class="text-[10px] uppercase font-bold text-gray-400">Redactions</div>
+                <div id="privacyEgressRedactions" class="text-base sm:text-lg font-bold font-mono text-amber-400 mt-0.5">0</div>
+              </div>
+            </div>
+
+            <!-- Compact Egress Table -->
+            <div class="overflow-x-auto border border-gray-800 rounded-xl max-h-[300px]">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-gray-950 text-gray-400 font-mono text-[11px] sticky top-0 border-b border-gray-800">
+                  <tr>
+                    <th class="p-2.5">Time</th>
+                    <th class="p-2.5">Role</th>
+                    <th class="p-2.5">Model</th>
+                    <th class="p-2.5">Tags</th>
+                    <th class="p-2.5 text-right">In / Out</th>
+                    <th class="p-2.5 text-right">Redactions</th>
+                  </tr>
+                </thead>
+                <tbody id="privacyEgressTableBody" class="divide-y divide-gray-800 font-mono">
+                  <tr><td colspan="6" class="p-4 text-center text-gray-500">Loading audit log...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- (c) Your Space: Device Pairing & Reset Card -->
+          <div class="glass-panel rounded-2xl p-6 space-y-4">
+            <div>
+              <h2 class="text-base font-bold text-white font-display">Your Space</h2>
+              <p class="text-xs text-gray-400 mt-0.5">Manage access tokens or purge your workspace data.</p>
+            </div>
+
+            <!-- Pair Another Device -->
+            <div class="p-4 rounded-xl bg-gray-900 border border-gray-800 space-y-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-xs font-bold text-gray-200">Pair Another Device</div>
+                  <div class="text-[11px] text-gray-400 mt-0.5">Generate a direct pairing link containing your bearer token in the URL fragment.</div>
+                </div>
+                <button onclick="generatePairLinkInPrivacy()" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition">
+                  Create Link
+                </button>
+              </div>
+
+              <div id="privacyPairContainer" class="hidden space-y-2 pt-2 border-t border-gray-800">
+                <div class="flex gap-2">
+                  <input id="privacyPairUrlInput" type="text" readonly class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-300 font-mono" />
+                  <button onclick="copyPrivacyPairUrl()" id="privacyCopyPairBtn" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition">
+                    Copy
+                  </button>
+                </div>
+                <div class="text-[11px] text-amber-300/90 bg-amber-950/30 p-2.5 rounded-lg border border-amber-500/30">
+                  <strong class="text-amber-400">Security Warning:</strong> Anyone with this link gains full access to this space. Keep it private.
+                </div>
+              </div>
+            </div>
+
+            <!-- Delete Space -->
+            <div class="p-4 rounded-xl bg-rose-950/20 border border-rose-800/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div class="text-xs font-bold text-rose-300">Delete My Space</div>
+                <div class="text-[11px] text-gray-400 mt-0.5">Permanently erase all tasks, files, memories, routines, and logs for this owner.</div>
+              </div>
+              <button onclick="confirmDeleteSpace()" class="px-4 py-2 bg-rose-900/80 hover:bg-rose-800 border border-rose-700 text-rose-100 rounded-lg text-xs font-semibold transition whitespace-nowrap shadow-sm">
+                Delete Space
+              </button>
+            </div>
+          </div>
+
         </div>
 
       </div>
@@ -250,50 +625,45 @@
 
   </main>
 
-  <!-- MODAL: Pair Device Link -->
-  <div id="pairModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="glass-panel bg-gray-900 border border-gray-700 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+  <!-- ================= MODALS ================= -->
+
+  <!-- MODAL: Save Task As Routine -->
+  <div id="saveAsRoutineModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel bg-gray-900 border border-gray-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
       <div class="flex items-center justify-between pb-3 border-b border-gray-800">
         <h3 class="text-base font-bold text-white flex items-center gap-2">
-          <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
-          Pair Another Device
+          <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+          Save Task as Routine
         </h3>
-        <button onclick="closePairModal()" class="text-gray-400 hover:text-white">&times;</button>
+        <button onclick="closeSaveAsRoutineModal()" class="text-gray-400 hover:text-white">&times;</button>
       </div>
 
-      <p class="text-xs text-gray-300 leading-relaxed">
-        Open this link on another device or browser to immediately connect to this private workspace.
-      </p>
+      <p class="text-xs text-gray-400">Save this verified task plan as a reusable routine. You can run it on demand or schedule it recurringly.</p>
 
-      <div class="space-y-1">
-        <label class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Pairing URL</label>
-        <div class="flex gap-2">
-          <input id="pairUrlInput" type="text" readonly class="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-xs font-mono text-gray-200 select-all" />
-          <button onclick="copyPairUrl()" id="copyPairBtn" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition">
-            Copy
-          </button>
+      <div class="space-y-3">
+        <div>
+          <label class="text-[11px] font-semibold text-gray-300 uppercase tracking-wider block mb-1">Routine Name (max 60 chars)</label>
+          <input id="routineNameInput" type="text" maxlength="60" placeholder="e.g. Daily Health & Diagnostic Probe" class="w-full bg-gray-950 border border-gray-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
         </div>
-      </div>
-
-      <div class="bg-amber-950/30 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-200 space-y-1">
-        <div class="font-bold flex items-center gap-1.5 text-amber-400">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-          Security Notice: Bearer-Token Pairing
+        <div>
+          <label class="text-[11px] font-semibold text-gray-300 uppercase tracking-wider block mb-1">Description (max 200 chars)</label>
+          <input id="routineDescInput" type="text" maxlength="200" placeholder="e.g. Runs system state probe and tests reachability" class="w-full bg-gray-950 border border-gray-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500" />
         </div>
-        <p class="text-[11px] leading-relaxed text-amber-200/90">
-          This is lightweight bearer-token pairing, not full authentication. Anyone who has this link or token can access your private workspace and execute tasks within your policy rules. Keep it private.
-        </p>
+        <div id="saveRoutineError" class="hidden text-xs text-rose-400 bg-rose-950/30 p-2.5 rounded-lg border border-rose-800"></div>
       </div>
 
-      <div class="pt-2 flex justify-end">
-        <button onclick="closePairModal()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition">
-          Close
+      <div class="pt-2 flex justify-end gap-2">
+        <button onclick="closeSaveAsRoutineModal()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-medium transition">
+          Cancel
+        </button>
+        <button id="saveRoutineSubmitBtn" onclick="submitSaveTaskAsRoutine()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition">
+          Save Routine
         </button>
       </div>
     </div>
   </div>
 
-  <!-- MODAL: Approvals Center -->
+  <!-- MODAL: Approvals Center (Preserves #approvalsModal and #approvalsList) -->
   <div id="approvalsModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="glass-panel bg-gray-900 border border-gray-700 rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
       <div class="flex items-center justify-between pb-3 border-b border-gray-800">
@@ -320,7 +690,50 @@
     </div>
   </div>
 
-  <!-- MODAL: Privacy Egress Ledger -->
+  <!-- MODAL: Device Pairing (Preserves #pairModal, #pairUrlInput, #copyPairBtn) -->
+  <div id="pairModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel bg-gray-900 border border-gray-700 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-gray-800">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+          Pair Another Device
+        </h3>
+        <button onclick="closePairModal()" class="text-gray-400 hover:text-white">&times;</button>
+      </div>
+
+      <p class="text-xs text-gray-400">
+        Use this URL on your phone or other computer to access this private space. Your token is preserved in the URL fragment.
+      </p>
+
+      <div class="space-y-2">
+        <label class="text-[11px] font-semibold text-gray-300 uppercase tracking-wider block">Pairing URL</label>
+        <div class="flex gap-2">
+          <input id="pairUrlInput" type="text" readonly class="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300 font-mono select-all focus:outline-none" />
+          <button onclick="copyPairUrl()" id="copyPairBtn" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition">
+            Copy
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-amber-950/30 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-200 space-y-1">
+        <div class="font-bold flex items-center gap-1.5 text-amber-400">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          Security Notice: Bearer-Token Pairing
+        </div>
+        <p class="text-[11px] leading-relaxed text-amber-200/90">
+          Anyone with this link can access your private workspace and execute tasks within your policy rules. Keep it private.
+        </p>
+      </div>
+
+      <div class="pt-2 flex justify-end">
+        <button onclick="closePairModal()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Privacy Egress Ledger (Preserves all original egress element IDs) -->
   <div id="egressModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="glass-panel bg-gray-900 border border-gray-700 rounded-2xl max-w-3xl w-full p-6 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
       <div class="flex items-center justify-between pb-3 border-b border-gray-800">
@@ -392,33 +805,44 @@
   <script>
     let activeTaskId = null;
     let cachedOwnerToken = null;
+    let currentSection = 'tasks';
+    let cachedPolicy = null;
 
     // --- OWNER TOKEN & PAIRING ---
     function getOwnerToken() {
       if (cachedOwnerToken) return cachedOwnerToken;
 
-      // 1. Check URL fragment for #pair=<token>
       const hash = window.location.hash || "";
       if (hash.startsWith("#pair=")) {
         const token = hash.replace("#pair=", "").trim();
         if (token && /^[a-fA-F0-9]{32,64}$/.test(token)) {
           localStorage.setItem("saha_owner_token", token);
+          localStorage.setItem("saha_is_paired", "1");
           cachedOwnerToken = token;
-          // Clean the fragment without triggering navigation
           history.replaceState(null, "", window.location.pathname + window.location.search);
           updateOwnerBadge();
           return token;
         }
       }
 
-      // 2. Check localStorage
+      if (localStorage.getItem("saha_is_paired") === "1") {
+        const token = localStorage.getItem("saha_owner_token");
+        if (token && /^[a-fA-F0-9]{32,64}$/.test(token)) {
+          cachedOwnerToken = token;
+          updateOwnerBadge();
+          return token;
+        }
+      }
+
+      // Check existing anonymous/private token in localStorage
       let token = localStorage.getItem("saha_owner_token");
-      if (!token) {
-        // Generate a random 128-bit hex token (16 bytes = 32 hex chars)
+      if (!token || token === "default-anonymous-owner" || !/^[a-fA-F0-9]{32,64}$/.test(token)) {
+        // Generate a cryptographically random 128-bit hex token (16 bytes = 32 hex chars)
         const bytes = new Uint8Array(16);
         window.crypto.getRandomValues(bytes);
         token = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
         localStorage.setItem("saha_owner_token", token);
+        localStorage.removeItem("saha_is_paired");
       }
       cachedOwnerToken = token;
       updateOwnerBadge();
@@ -427,9 +851,10 @@
 
     function updateOwnerBadge() {
       const token = cachedOwnerToken || localStorage.getItem("saha_owner_token") || "";
+      const isPaired = localStorage.getItem("saha_is_paired") === "1";
       const badge = document.getElementById("ownerBadge");
       if (badge && token) {
-        badge.innerText = `Space: ${token.substring(0, 8)}...`;
+        badge.innerText = `${isPaired ? "Paired" : "Space"}: ${token.substring(0, 8)}...`;
       }
     }
 
@@ -442,6 +867,758 @@
       return fetch(url, Object.assign({}, options, { headers }));
     }
 
+    // Relative Time Formatter
+    function timeAgo(isoString) {
+      if (!isoString) return "--";
+      const date = new Date(isoString);
+      const now = new Date();
+      const diffSec = Math.max(0, Math.floor((now - date) / 1000));
+      if (diffSec < 10) return "just now";
+      if (diffSec < 60) return `${diffSec}s ago`;
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return `${diffMin}m ago`;
+      const diffHours = Math.floor(diffMin / 60);
+      if (diffHours < 24) return `${diffHours}h ago`;
+      const diffDays = Math.floor(diffHours / 24);
+      return `${diffDays}d ago`;
+    }
+
+    // --- SECTION SWITCHER (Plain JS Show/Hide) ---
+    function switchSection(sectionId) {
+      currentSection = sectionId;
+      const sections = ['tasks', 'activity', 'memory', 'routines', 'privacy'];
+      
+      // Update Tab Styles
+      sections.forEach(s => {
+        const tabEl = document.getElementById(`tab${s.charAt(0).toUpperCase() + s.slice(1)}`);
+        const viewEl = document.getElementById(`section${s.charAt(0).toUpperCase() + s.slice(1)}`);
+        
+        if (s === sectionId) {
+          if (tabEl) {
+            tabEl.className = "nav-tab flex-1 lg:flex-initial flex items-center justify-center lg:justify-start gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition whitespace-nowrap bg-[#72D6B3]/15 text-[#72D6B3] border border-[#72D6B3]/40 shadow-sm";
+          }
+          if (viewEl) viewEl.classList.remove("hidden");
+        } else {
+          if (tabEl) {
+            tabEl.className = "nav-tab flex-1 lg:flex-initial flex items-center justify-center lg:justify-start gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition whitespace-nowrap text-[#95A7A0] hover:text-[#F2F5F2] hover:bg-[#19221F] border border-transparent";
+          }
+          if (viewEl) viewEl.classList.add("hidden");
+        }
+      });
+
+      // Update Sidebar contextual card
+      const sidebarTasks = document.getElementById("tasksSidebarCard");
+      const sidebarInfo = document.getElementById("sidebarInfoCard");
+      const infoTitle = document.getElementById("sidebarInfoTitle");
+      const infoText = document.getElementById("sidebarInfoText");
+
+      if (sectionId === 'tasks') {
+        sidebarTasks.classList.remove("hidden");
+        sidebarInfo.classList.add("hidden");
+      } else {
+        sidebarTasks.classList.add("hidden");
+        sidebarInfo.classList.remove("hidden");
+
+        if (sectionId === 'activity') {
+          infoTitle.innerText = "Background Watcher";
+          infoText.innerText = "The watcher continuously probes completed and paused tasks. Verified steps that drift trigger auto-healing if within budget.";
+        } else if (sectionId === 'memory') {
+          infoTitle.innerText = "Deterministic Memory";
+          infoText.innerText = "Notes and preferences stay strictly within your private space. Up to 3 active memories are injected into planning prompts.";
+        } else if (sectionId === 'routines') {
+          infoTitle.innerText = "Saved Routines";
+          infoText.innerText = "Fully verified tasks can be saved as routines. The watcher triggers scheduled skills automatically.";
+        } else if (sectionId === 'privacy') {
+          infoTitle.innerText = "Privacy Guarantee";
+          infoText.innerText = "Only outbound character lengths and metadata are recorded. Raw prompts, files, and responses are never stored in the egress ledger.";
+        }
+      }
+
+      // Trigger section data fetch
+      if (sectionId === 'activity') {
+        loadActivity();
+        loadWatcherStatus();
+      } else if (sectionId === 'memory') {
+        loadMemories();
+        loadMemoryProposals();
+      } else if (sectionId === 'routines') {
+        loadSkills();
+      } else if (sectionId === 'privacy') {
+        loadPolicy();
+        loadEgress();
+      } else if (sectionId === 'tasks') {
+        loadTasks();
+        if (activeTaskId) loadTaskDetail();
+      }
+    }
+
+    
+    function copyTaskOutput() {
+      const contentEl = document.getElementById("taskOutputContent");
+      if (!contentEl) return;
+      const text = contentEl.innerText;
+      navigator.clipboard.writeText(text);
+      const btn = document.getElementById("copyTaskOutputBtn");
+      if (btn) {
+        const origHtml = btn.innerHTML;
+        btn.innerText = "Copied!";
+        btn.classList.replace("text-gray-300", "text-emerald-400");
+        setTimeout(() => {
+          btn.innerHTML = origHtml;
+          btn.classList.replace("text-emerald-400", "text-gray-300");
+        }, 2000);
+      }
+    }
+
+    function openTaskFromActivity(taskId) {
+      if (!taskId) return;
+      switchSection('tasks');
+      selectTask(taskId);
+    }
+
+    // --- WATCHER STATUS (Chip in Sidebar and Top of Activity) ---
+    async function loadWatcherStatus() {
+      try {
+        const res = await sahaFetch("/watcher/status");
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        let statusText = "Watcher disabled";
+        if (data.enabled) {
+          statusText = `Watching, checks every ${data.interval}s, auto-heals left ${data.heals_remaining_hour}`;
+        }
+
+        const sidebarTextEl = document.getElementById("sidebarWatcherStatusText");
+        if (sidebarTextEl) sidebarTextEl.innerText = statusText;
+
+        const activityTextEl = document.getElementById("activityWatcherStatusText");
+        if (activityTextEl) activityTextEl.innerText = statusText;
+
+        const dayBudgetEl = document.getElementById("activityWatcherBudgetDay");
+        if (dayBudgetEl) {
+          dayBudgetEl.innerText = `Day: ${data.heals_remaining_day || 0} heals left`;
+        }
+      } catch (e) {
+        console.error("Watcher status error:", e);
+      }
+    }
+
+    // --- ACTIVITY STREAM ---
+    async function loadActivity() {
+      const feed = document.getElementById("activityFeedList");
+      const badge = document.getElementById("activityCountBadge");
+      try {
+        const res = await sahaFetch("/activity?limit=50");
+        if (res.status === 401) {
+          feed.innerHTML = `<div class="text-xs text-amber-400 py-6 text-center">Session unauthorized. Re-authenticating...</div>`;
+          return;
+        }
+        if (res.status === 429) {
+          feed.innerHTML = `<div class="text-xs text-amber-400 py-6 text-center">Rate limit reached. Pausing updates...</div>`;
+          return;
+        }
+        if (!res.ok) {
+          feed.innerHTML = `<div class="text-xs text-rose-400 py-6 text-center">Failed to load activity stream.</div>`;
+          return;
+        }
+
+        const data = await res.json();
+        const items = data.activity || [];
+        if (badge) badge.innerText = `${items.length} events`;
+
+        if (items.length === 0) {
+          feed.innerHTML = `<div class="text-xs text-gray-500 py-10 text-center">No activity recorded yet. Watcher cycles and task executions will appear here.</div>`;
+          return;
+        }
+
+        feed.innerHTML = items.map(item => {
+          const timeStr = timeAgo(item.created_at);
+
+          // 1. Drift Detected (amber)
+          if (item.type === 'drift_detected') {
+            return `
+              <div class="p-3.5 rounded-xl border border-amber-500/30 bg-amber-950/20 text-amber-200 space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30">Drift Detected</span>
+                    <span class="text-xs font-semibold text-gray-200">Drift on ${item.step_intent || 'step'}</span>
+                  </div>
+                  <span class="text-[11px] font-mono text-gray-400">${timeStr}</span>
+                </div>
+                <div class="text-xs text-amber-200/90 italic pl-1 border-l-2 border-amber-500/40">"${item.explanation}"</div>
+                ${item.task_id ? `
+                  <div class="flex justify-end pt-1">
+                    <button onclick="openTaskFromActivity('${item.task_id}')" class="text-xs font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-2 flex items-center gap-1">
+                      Open Task &rarr;
+                    </button>
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          }
+
+          // 2. Healed (jade check)
+          if (item.type === 'healed') {
+            return `
+              <div class="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-950/20 text-emerald-200 space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                      <svg class="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                      Healed
+                    </span>
+                    <span class="text-xs font-semibold text-gray-200">${item.label || 'Step auto-healed'}</span>
+                  </div>
+                  <span class="text-[11px] font-mono text-gray-400">${timeStr}</span>
+                </div>
+                ${item.task_id ? `
+                  <div class="flex justify-end pt-1">
+                    <button onclick="openTaskFromActivity('${item.task_id}')" class="text-xs font-semibold text-emerald-400 hover:text-emerald-300 underline underline-offset-2 flex items-center gap-1">
+                      Open Task &rarr;
+                    </button>
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          }
+
+          // 3. Routine Ran (blue/gray)
+          if (item.type === 'routine_ran') {
+            const statusColor = item.status === 'complete' ? 'text-emerald-400 border-emerald-500/30' : 'text-blue-400 border-blue-500/30';
+            return `
+              <div class="p-3.5 rounded-xl border border-gray-800 bg-gray-900/40 text-gray-300 space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 ${statusColor} border">Routine Ran</span>
+                    <span class="text-xs font-semibold text-gray-200">${item.label}</span>
+                  </div>
+                  <span class="text-[11px] font-mono text-gray-400">${timeStr}</span>
+                </div>
+                <div class="flex items-center justify-between pt-1 text-xs">
+                  <span class="text-gray-400">Status: <strong class="uppercase text-[11px]">${item.status}</strong></span>
+                  ${item.task_id ? `
+                    <button onclick="openTaskFromActivity('${item.task_id}')" class="font-semibold text-blue-400 hover:text-blue-300 underline underline-offset-2">
+                      Open Task &rarr;
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }
+
+          // 4. Approval Pending (purple/amber)
+          if (item.type === 'approval_pending') {
+            return `
+              <div class="p-3.5 rounded-xl border border-amber-500/30 bg-amber-950/20 text-amber-200 space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">Approval Pending</span>
+                    <span class="text-xs font-semibold text-gray-200">Requires tool: <code class="font-mono">${item.tool}</code></span>
+                  </div>
+                  <span class="text-[11px] font-mono text-gray-400">${timeStr}</span>
+                </div>
+                <div class="text-xs text-amber-200/90">${item.reason || 'Action requires authorization outside default policy.'}</div>
+                <div class="flex justify-end gap-3 pt-1">
+                  <button onclick="openApprovalsModal()" class="text-xs font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-2">
+                    Review Approval &rarr;
+                  </button>
+                  ${item.task_id ? `
+                    <button onclick="openTaskFromActivity('${item.task_id}')" class="text-xs font-semibold text-gray-400 hover:text-gray-300 underline underline-offset-2">
+                      Open Task
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }
+
+          // 5. Memory Proposal Pending (indigo)
+          if (item.type === 'memory_proposal_pending') {
+            return `
+              <div class="p-3.5 rounded-xl border border-indigo-500/30 bg-indigo-950/20 text-indigo-200 space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">Memory Proposed</span>
+                    <span class="text-xs font-semibold text-gray-200">${item.label}</span>
+                  </div>
+                  <span class="text-[11px] font-mono text-gray-400">${timeStr}</span>
+                </div>
+                <div class="flex justify-end pt-1">
+                  <button onclick="switchSection('memory')" class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 underline underline-offset-2">
+                    Review in Memory &rarr;
+                  </button>
+                </div>
+              </div>
+            `;
+          }
+
+          return '';
+        }).join('');
+      } catch (e) {
+        feed.innerHTML = `<div class="text-xs text-rose-400 py-6 text-center">Network error loading activity feed: ${e}</div>`;
+      }
+    }
+
+    // --- MEMORY MANAGEMENT ---
+    function updateMemoryCounter() {
+      const textarea = document.getElementById("newMemoryText");
+      const counter = document.getElementById("memoryCharCounter");
+      if (textarea && counter) {
+        counter.innerText = `${textarea.value.length} / 300`;
+      }
+    }
+
+    async function handleAddMemory() {
+      const text = document.getElementById("newMemoryText").value.trim();
+      const kind = document.getElementById("newMemoryKind").value;
+      const errEl = document.getElementById("memoryAddError");
+      errEl.classList.add("hidden");
+
+      if (!text) {
+        errEl.innerText = "Please enter note text.";
+        errEl.classList.remove("hidden");
+        return;
+      }
+
+      try {
+        const res = await sahaFetch("/memories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind, text })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          errEl.innerText = err.detail || "Failed to create memory note.";
+          errEl.classList.remove("hidden");
+          return;
+        }
+        document.getElementById("newMemoryText").value = "";
+        updateMemoryCounter();
+        await loadMemories();
+      } catch (e) {
+        errEl.innerText = "Network error: " + e;
+        errEl.classList.remove("hidden");
+      }
+    }
+
+    async function loadMemories() {
+      const list = document.getElementById("activeMemoriesList");
+      const badge = document.getElementById("activeMemoriesCountBadge");
+      try {
+        const res = await sahaFetch("/memories");
+        if (!res.ok) {
+          list.innerHTML = `<div class="text-xs text-rose-400 py-4 text-center">Failed to load memories.</div>`;
+          return;
+        }
+        const data = await res.json();
+        const mems = data.memories || [];
+        if (badge) badge.innerText = `${mems.length} / 50 active`;
+
+        if (mems.length === 0) {
+          list.innerHTML = `<div class="text-xs text-gray-500 py-6 text-center">No active memory notes. Add your first note above.</div>`;
+          return;
+        }
+
+        list.innerHTML = mems.map(m => {
+          const kindBadgeColor = {
+            note: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+            fact: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+            preference: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
+          }[m.kind] || 'bg-gray-800 text-gray-300';
+
+          return `
+            <div class="p-3.5 rounded-xl border border-gray-800 bg-gray-950/60 flex items-start justify-between gap-3">
+              <div class="space-y-1 min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${kindBadgeColor}">${m.kind}</span>
+                  <span class="text-[10px] font-mono text-gray-500">${timeAgo(m.created_at)}</span>
+                </div>
+                <p class="text-xs text-gray-200 font-sans leading-relaxed break-words">${m.text}</p>
+              </div>
+              <button onclick="handleDeleteMemory('${m.id}')" class="text-gray-500 hover:text-rose-400 text-xs px-2 py-1 rounded hover:bg-gray-900 transition flex-shrink-0" title="Delete note">
+                Delete
+              </button>
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        list.innerHTML = `<div class="text-xs text-rose-400 py-4 text-center">Failed to load memories: ${e}</div>`;
+      }
+    }
+
+    async function handleDeleteMemory(id) {
+      if (!confirm("Delete this memory note?")) return;
+      try {
+        const res = await sahaFetch(`/memories/${id}`, { method: "DELETE" });
+        if (!res.ok) {
+          const err = await res.json();
+          alert("Delete failed: " + (err.detail || "Unknown error"));
+          return;
+        }
+        await loadMemories();
+      } catch (e) {
+        alert("Failed to delete memory: " + e);
+      }
+    }
+
+    async function loadMemoryProposals() {
+      const list = document.getElementById("proposedMemoriesList");
+      const badge = document.getElementById("proposalsCountBadge");
+      try {
+        const res = await sahaFetch("/memories/proposals");
+        if (!res.ok) {
+          list.innerHTML = `<div class="text-xs text-rose-400 py-3 text-center">Failed to load proposals.</div>`;
+          return;
+        }
+        const data = await res.json();
+        const proposals = data.proposals || [];
+        if (badge) badge.innerText = `${proposals.length} proposals`;
+
+        if (proposals.length === 0) {
+          list.innerHTML = `<div class="text-xs text-gray-500 py-3 text-center">No pending memory proposals.</div>`;
+          return;
+        }
+
+        list.innerHTML = proposals.map(p => `
+          <div class="p-3 rounded-lg border border-indigo-500/20 bg-gray-950/70 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300">${p.kind}</span>
+              <span class="text-[10px] font-mono text-gray-500">${timeAgo(p.created_at)}</span>
+            </div>
+            <p class="text-xs text-gray-200 font-sans leading-relaxed break-words">${p.text}</p>
+            <div class="flex items-center justify-end gap-2 pt-1 border-t border-gray-800/80">
+              <button onclick="handleRejectProposal('${p.id}')" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-medium transition">
+                Reject
+              </button>
+              <button onclick="handleApproveProposal('${p.id}')" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-semibold transition">
+                Approve
+              </button>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        list.innerHTML = `<div class="text-xs text-rose-400 py-3 text-center">Failed to load proposals: ${e}</div>`;
+      }
+    }
+
+    async function handleApproveProposal(id) {
+      try {
+        const res = await sahaFetch(`/memories/proposals/${id}/approve`, { method: "POST" });
+        if (!res.ok) {
+          const err = await res.json();
+          alert("Approval failed: " + (err.detail || "Unknown error"));
+          return;
+        }
+        await loadMemoryProposals();
+        await loadMemories();
+      } catch (e) {
+        alert("Action failed: " + e);
+      }
+    }
+
+    async function handleRejectProposal(id) {
+      try {
+        const res = await sahaFetch(`/memories/proposals/${id}/reject`, { method: "POST" });
+        if (!res.ok) {
+          const err = await res.json();
+          alert("Rejection failed: " + (err.detail || "Unknown error"));
+          return;
+        }
+        await loadMemoryProposals();
+      } catch (e) {
+        alert("Action failed: " + e);
+      }
+    }
+
+    // --- SAVED ROUTINES (SKILLS) ---
+    async function loadSkills() {
+      const list = document.getElementById("routinesList");
+      const badge = document.getElementById("routinesCountBadge");
+      try {
+        const res = await sahaFetch("/skills");
+        if (!res.ok) {
+          list.innerHTML = `<div class="text-xs text-rose-400 py-6 text-center">Failed to load routines.</div>`;
+          return;
+        }
+        const data = await res.json();
+        const skills = data.skills || [];
+        if (badge) badge.innerText = `${skills.length} saved`;
+
+        if (skills.length === 0) {
+          list.innerHTML = `<div class="text-xs text-gray-500 py-10 text-center">No saved routines yet. Complete any task with verified steps, then click "Save as Routine".</div>`;
+          return;
+        }
+
+        list.innerHTML = skills.map(s => {
+          const statusColors = {
+            complete: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+            verified: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+            failed: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+            paused: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+          };
+          const pill = statusColors[s.last_status] || 'bg-gray-800 text-gray-400 border-gray-700';
+
+          return `
+            <div class="glass-panel rounded-2xl p-4 sm:p-5 space-y-3 border border-gray-800">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-sm font-bold text-white">${s.name}</span>
+                    <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${pill}">${s.last_status || 'never run'}</span>
+                    ${s.needs_attention ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">Needs Attention</span>' : ''}
+                  </div>
+                  <p class="text-xs text-gray-400 mt-1">${s.description || 'No description provided.'}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button onclick="handleRunRoutine('${s.id}')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+                    Run Now
+                  </button>
+                  <button onclick="handleDeleteRoutine('${s.id}')" class="px-2.5 py-1.5 bg-gray-800 hover:bg-rose-950/80 hover:text-rose-300 text-gray-400 rounded-lg text-xs transition border border-gray-700">
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              <!-- Metadata & Schedule Row -->
+              <div class="pt-3 border-t border-gray-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div class="flex flex-wrap items-center gap-3 sm:gap-4 text-gray-400">
+                  <span class="font-mono text-[11px]">Runs: <strong class="text-gray-200">${s.runs}</strong></span>
+                  <span class="font-mono text-[11px]">Verified: <strong class="text-emerald-400">${s.verified_runs}</strong></span>
+                  ${s.last_run_at ? `<span class="text-gray-500 text-[11px]">Last: ${new Date(s.last_run_at).toLocaleTimeString()}</span>` : ''}
+                  ${s.next_run_at ? `<span class="text-indigo-400 text-[11px] font-mono">Next: ${new Date(s.next_run_at).toLocaleTimeString()}</span>` : ''}
+                </div>
+
+                <!-- Schedule Select Control -->
+                <div class="flex items-center gap-2">
+                  <label class="text-gray-400 text-xs font-medium whitespace-nowrap">Schedule:</label>
+                  <select onchange="handleUpdateRoutineSchedule('${s.id}', this.value)" class="bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded-lg px-2.5 py-1 focus:outline-none focus:border-indigo-500">
+                    <option value="" ${!s.schedule_minutes ? 'selected' : ''}>Off</option>
+                    <option value="10" ${s.schedule_minutes === 10 ? 'selected' : ''}>Every 10 minutes</option>
+                    <option value="15" ${s.schedule_minutes === 15 ? 'selected' : ''}>Every 15 minutes</option>
+                    <option value="30" ${s.schedule_minutes === 30 ? 'selected' : ''}>Every 30 minutes</option>
+                    <option value="60" ${s.schedule_minutes === 60 ? 'selected' : ''}>Every 1 hour</option>
+                    <option value="360" ${s.schedule_minutes === 360 ? 'selected' : ''}>Every 6 hours</option>
+                    <option value="1440" ${s.schedule_minutes === 1440 ? 'selected' : ''}>Every 24 hours</option>
+                  </select>
+                </div>
+              </div>
+              <div id="routineError_${s.id}" class="hidden text-xs text-rose-400 bg-rose-950/30 p-2 rounded border border-rose-800"></div>
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        list.innerHTML = `<div class="text-xs text-rose-400 py-6 text-center">Failed to load routines: ${e}</div>`;
+      }
+    }
+
+    async function handleRunRoutine(skillId) {
+      try {
+        const res = await sahaFetch(`/skills/${skillId}/run`, { method: "POST" });
+        if (!res.ok) {
+          const err = await res.json();
+          alert("Run routine failed: " + (err.detail || "Unknown error"));
+          return;
+        }
+        const data = await res.json();
+        await loadSkills();
+        if (data.task && data.task.id) {
+          switchSection('tasks');
+          selectTask(data.task.id);
+        }
+      } catch (e) {
+        alert("Failed to run routine: " + e);
+      }
+    }
+
+    async function handleDeleteRoutine(skillId) {
+      if (!confirm("Delete this saved routine?")) return;
+      try {
+        const res = await sahaFetch(`/skills/${skillId}`, { method: "DELETE" });
+        if (!res.ok) {
+          const err = await res.json();
+          alert("Delete failed: " + (err.detail || "Unknown error"));
+          return;
+        }
+        await loadSkills();
+      } catch (e) {
+        alert("Failed to delete routine: " + e);
+      }
+    }
+
+    async function handleUpdateRoutineSchedule(skillId, minutesStr) {
+      const errEl = document.getElementById(`routineError_${skillId}`);
+      if (errEl) errEl.classList.add("hidden");
+
+      const minutes = minutesStr ? parseInt(minutesStr) : null;
+      try {
+        const res = await sahaFetch(`/skills/${skillId}/schedule`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ minutes })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          if (errEl) {
+            errEl.innerText = err.detail || "Failed to update schedule.";
+            errEl.classList.remove("hidden");
+          } else {
+            alert("Schedule error: " + (err.detail || "Failed to update schedule"));
+          }
+          await loadSkills();
+          return;
+        }
+        await loadSkills();
+      } catch (e) {
+        if (errEl) {
+          errEl.innerText = "Network error: " + e;
+          errEl.classList.remove("hidden");
+        } else {
+          alert("Network error: " + e);
+        }
+      }
+    }
+
+    // Modal: Save Task As Routine
+    function openSaveAsRoutineModal() {
+      if (!activeTaskId) return;
+      const modal = document.getElementById("saveAsRoutineModal");
+      const errEl = document.getElementById("saveRoutineError");
+      errEl.classList.add("hidden");
+      document.getElementById("routineNameInput").value = "";
+      document.getElementById("routineDescInput").value = "";
+      modal.classList.remove("hidden");
+    }
+
+    function closeSaveAsRoutineModal() {
+      document.getElementById("saveAsRoutineModal").classList.add("hidden");
+    }
+
+    async function submitSaveTaskAsRoutine() {
+      if (!activeTaskId) return;
+      const name = document.getElementById("routineNameInput").value.trim();
+      const description = document.getElementById("routineDescInput").value.trim();
+      const errEl = document.getElementById("saveRoutineError");
+      errEl.classList.add("hidden");
+
+      if (!name) {
+        errEl.innerText = "Routine name is required.";
+        errEl.classList.remove("hidden");
+        return;
+      }
+
+      try {
+        const res = await sahaFetch(`/tasks/${activeTaskId}/save-as-skill`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, description })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          errEl.innerText = err.detail || "Only fully verified task plans can be saved as a skill.";
+          errEl.classList.remove("hidden");
+          return;
+        }
+        closeSaveAsRoutineModal();
+        switchSection('routines');
+      } catch (e) {
+        errEl.innerText = "Network error: " + e;
+        errEl.classList.remove("hidden");
+      }
+    }
+
+    // --- PRIVACY & POLICY SECTION ---
+    async function loadPolicy() {
+      try {
+        const res = await sahaFetch("/policy");
+        if (!res.ok) return;
+        const data = await res.json();
+        cachedPolicy = data.policy;
+
+        // Auto-heal toggle
+        const toggle = document.getElementById("privacyAutoHealToggle");
+        if (toggle && cachedPolicy) {
+          toggle.checked = Boolean(cachedPolicy.auto_heal);
+        }
+
+        // Allowed tools pills
+        const toolsEl = document.getElementById("policyAllowedTools");
+        if (toolsEl && cachedPolicy.allowed_tools) {
+          toolsEl.innerHTML = cachedPolicy.allowed_tools.map(t => `<span class="px-2 py-0.5 rounded bg-gray-900 border border-gray-800">${t}</span>`).join('');
+        }
+
+        // Allowed domains pills
+        const domainsEl = document.getElementById("policyAllowedDomains");
+        if (domainsEl && cachedPolicy.allowed_domains) {
+          domainsEl.innerHTML = cachedPolicy.allowed_domains.map(d => `<span class="px-2 py-0.5 rounded bg-gray-900 border border-gray-800">${d}</span>`).join('');
+        }
+      } catch (e) {
+        console.error("Failed to load policy:", e);
+      }
+    }
+
+    async function toggleAutoHealPolicy(checked) {
+      const msgEl = document.getElementById("policyUpdateMsg");
+      msgEl.classList.add("hidden");
+      if (!cachedPolicy) return;
+
+      const updated = Object.assign({}, cachedPolicy, { auto_heal: checked });
+      try {
+        const res = await sahaFetch("/policy", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updated)
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          msgEl.className = "text-xs text-rose-400 py-1";
+          msgEl.innerText = "Failed to update policy: " + (err.detail || "Unknown error");
+          msgEl.classList.remove("hidden");
+          // Revert toggle
+          document.getElementById("privacyAutoHealToggle").checked = !checked;
+          return;
+        }
+        const data = await res.json();
+        cachedPolicy = data.policy;
+        msgEl.className = "text-xs text-emerald-400 py-1";
+        msgEl.innerText = `Auto-heal ${checked ? 'enabled' : 'disabled'} successfully.`;
+        msgEl.classList.remove("hidden");
+        setTimeout(() => msgEl.classList.add("hidden"), 3000);
+      } catch (e) {
+        msgEl.className = "text-xs text-rose-400 py-1";
+        msgEl.innerText = "Network error updating policy: " + e;
+        msgEl.classList.remove("hidden");
+        document.getElementById("privacyAutoHealToggle").checked = !checked;
+      }
+    }
+
+    async function generatePairLinkInPrivacy() {
+      try {
+        const res = await sahaFetch("/owner/pair-link", { method: "POST" });
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById("privacyPairUrlInput").value = data.pair_link || data.pair_url;
+        document.getElementById("privacyPairContainer").classList.remove("hidden");
+      } catch (e) {
+        alert("Failed to create pairing link: " + e);
+      }
+    }
+
+    function copyPrivacyPairUrl() {
+      const input = document.getElementById("privacyPairUrlInput");
+      input.select();
+      input.setSelectionRange(0, 99999);
+      navigator.clipboard.writeText(input.value);
+      const btn = document.getElementById("privacyCopyPairBtn");
+      btn.innerText = "Copied!";
+      btn.classList.replace("bg-indigo-600", "bg-emerald-600");
+      setTimeout(() => {
+        btn.innerText = "Copy";
+        btn.classList.replace("bg-emerald-600", "bg-indigo-600");
+      }, 2000);
+    }
+
+    // --- TASK ORCHESTRATION & LEDGER (Preserves original functions & IDs) ---
     const chipGoals = {
       0: "Create two small data files with different facts about Hyderabad, combine them into a summary file, and check that https://example.com is reachable.",
       1: "Write a small diagnostic script in the task workspace, run it, and confirm that https://httpbin.org is reachable.",
@@ -476,7 +1653,7 @@
         const res = await sahaFetch("/tasks");
         const data = await res.json();
         const list = document.getElementById("tasksList");
-        const tasks = data.tasks || [];
+        const tasks = (data.tasks || []).filter(t => !t.id.startsWith("demo-task-"));
         document.getElementById("taskCountBadge").innerText = tasks.length;
 
         if (tasks.length === 0) {
@@ -487,22 +1664,32 @@
         list.innerHTML = tasks.map(t => {
           const isSelected = t.id === activeTaskId;
           const statusColors = {
-            complete: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-            running: 'bg-blue-500/10 text-blue-400 border-blue-500/30 animate-pulse',
-            planning: 'bg-gray-800 text-gray-300 border-gray-700',
-            failed: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
-            paused: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+            complete: 'bg-[#72D6B3]/15 text-[#72D6B3] border-[#72D6B3]/40',
+            running: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40 animate-pulse',
+            planning: 'bg-[#101715] text-[#95A7A0] border-[#273631]',
+            failed: 'bg-red-500/15 text-red-300 border-red-500/35',
+            paused: 'bg-amber-500/15 text-amber-300 border-amber-500/40',
           };
-          const pill = statusColors[t.status] || 'bg-gray-800 text-gray-300';
+          const pill = statusColors[t.status] || 'bg-[#101715] text-[#95A7A0] border-[#273631]';
 
           return `
-            <div onclick="selectTask('${t.id}')" class="p-3 rounded-xl border transition cursor-pointer ${isSelected ? 'bg-gray-800/90 border-emerald-500/50 shadow-md' : 'bg-gray-900/60 border-gray-800 hover:border-gray-700'}">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-[10px] font-mono text-gray-500">${t.id.substring(0, 8)}...</span>
-                <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${pill}">${t.status}</span>
+            <div onclick="selectTask('${t.id}')" class="p-3.5 rounded-xl border transition cursor-pointer space-y-1.5 ${isSelected ? 'bg-[#1B2723] border-[#72D6B3]/60 shadow-md ring-1 ring-[#72D6B3]/30' : 'bg-[#141C19] border-[#25352F] hover:border-[#72D6B3]/40'}">
+              <div class="flex items-center justify-between gap-1">
+                <span class="text-[10px] font-mono text-[#95A7A0]">${t.id.substring(0, 8)}...</span>
+                <div class="flex items-center gap-1.5">
+                  ${t.needs_attention ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/40">Needs Attention</span>' : ''}
+                  <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${pill}">${t.status}</span>
+                </div>
               </div>
-              <div class="text-xs text-gray-200 font-medium line-clamp-2">${t.goal}</div>
-              <div class="text-[10px] text-gray-500 mt-1">${new Date(t.created_at).toLocaleTimeString()}</div>
+              <div class="text-xs text-[#F2F5F2] font-medium line-clamp-2 leading-snug">${t.goal}</div>
+              <div class="flex items-center justify-between mt-1 pt-1.5 border-t border-[#23312C]">
+                <span class="text-[10px] text-[#95A7A0] font-mono">${new Date(t.created_at).toLocaleTimeString()}</span>
+                ${t.needs_attention ? `
+                  <button onclick="event.stopPropagation(); resumeSpecificTask('${t.id}')" class="px-2 py-0.5 bg-amber-500 hover:bg-amber-400 text-black rounded text-[10px] font-bold transition shadow-sm">
+                    Resume
+                  </button>
+                ` : ''}
+              </div>
             </div>
           `;
         }).join('');
@@ -516,7 +1703,7 @@
 
         const urlParams = new URLSearchParams(window.location.search);
         const reqTaskId = urlParams.get("task");
-        if (reqTaskId) {
+        if (reqTaskId && (!activeTaskId || activeTaskId === reqTaskId)) {
           selectTask(reqTaskId);
         } else if (!activeTaskId && tasks.length > 0) {
           selectTask(tasks[0].id);
@@ -547,15 +1734,25 @@
         document.getElementById("taskGoalLabel").innerText = task.goal;
         
         const statusColors = {
-          complete: 'bg-emerald-500 text-black',
-          running: 'bg-blue-500 text-white animate-pulse',
-          planning: 'bg-gray-700 text-white',
-          failed: 'bg-rose-600 text-white',
-          paused: 'bg-amber-500 text-black',
+          complete: 'bg-[#72D6B3] text-[#101715] font-bold shadow-sm',
+          running: 'bg-cyan-500 text-[#101715] font-bold animate-pulse',
+          planning: 'bg-[#141C19] text-[#95A7A0] border border-[#273631] font-bold',
+          failed: 'bg-red-500/20 text-red-200 border border-red-500/40 font-bold',
+          paused: 'bg-amber-500 text-[#101715] font-bold',
         };
         const pillEl = document.getElementById("taskStatusPill");
         pillEl.className = `px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${statusColors[task.status] || 'bg-gray-800 text-gray-300'}`;
         pillEl.innerText = task.status;
+
+        // Save as Routine Button (Visible on fully verified complete task)
+        const saveRoutineBtn = document.getElementById("saveAsRoutineBtn");
+        if (saveRoutineBtn) {
+          if (data.is_complete || (task.status === 'complete' && !data.has_drift)) {
+            saveRoutineBtn.classList.remove("hidden");
+          } else {
+            saveRoutineBtn.classList.add("hidden");
+          }
+        }
 
         // Drift Banner
         const driftBanner = document.getElementById("driftBanner");
@@ -578,76 +1775,160 @@
           blockedAlert.classList.add("hidden");
         }
 
+        
+        // Task Output Panel: Show actual text produced by read_file step in selected task
+        const outputPanel = document.getElementById("taskOutputPanel");
+        if (outputPanel) {
+          let readSteps = steps.filter(s => 
+            s.tool === 'read_file' && 
+            s.status !== 'superseded' && 
+            s.result && 
+            typeof s.result.content === 'string'
+          );
+          if (readSteps.length === 0) {
+            readSteps = steps.filter(s => 
+              s.tool === 'read_file' && 
+              s.result && 
+              typeof s.result.content === 'string'
+            );
+          }
+
+          if (readSteps.length > 0) {
+            outputPanel.classList.remove("hidden");
+            if (readSteps.length === 1) {
+              const primary = readSteps[0];
+              const path = primary.result.path || (primary.args && primary.args.path) || 'file';
+              const text = primary.result.content || '(Empty file)';
+              const bytes = primary.result.bytes_read !== undefined ? primary.result.bytes_read : text.length;
+
+              document.getElementById("taskOutputPathBadge").innerText = path;
+              document.getElementById("taskOutputContent").innerText = text;
+              document.getElementById("taskOutputStepLabel").innerText = `Output from Step ${primary.idx || primary.seq}: ${primary.intent || 'Read file'}`;
+              document.getElementById("taskOutputBytesLabel").innerText = `${bytes.toLocaleString()} bytes read`;
+            } else {
+              const combinedText = readSteps.map(s => {
+                const path = s.result.path || (s.args && s.args.path) || 'file';
+                return `=== ${path} (Step ${s.idx || s.seq}: ${s.intent || 'Read file'}) ===\n${s.result.content}`;
+              }).join('\n\n');
+              const totalBytes = readSteps.reduce((acc, s) => acc + (s.result.bytes_read !== undefined ? s.result.bytes_read : (s.result.content || '').length), 0);
+
+              document.getElementById("taskOutputPathBadge").innerText = `${readSteps.length} files`;
+              document.getElementById("taskOutputContent").innerText = combinedText;
+              document.getElementById("taskOutputStepLabel").innerText = `${readSteps.length} read_file steps executed`;
+              document.getElementById("taskOutputBytesLabel").innerText = `${totalBytes.toLocaleString()} bytes total`;
+            }
+          } else {
+            outputPanel.classList.add("hidden");
+          }
+        }
+
         document.getElementById("timelineStats").innerText = `${steps.length} steps recorded in append-only ledger`;
 
         // Render Steps Timeline
         const timeline = document.getElementById("stepsTimeline");
         timeline.innerHTML = steps.map(s => {
           const badgeStyles = {
-            verified:   'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-            running:    'bg-blue-500/10 text-blue-400 border-blue-500/30 animate-pulse',
-            pending:    'bg-gray-800/80 text-gray-400 border-gray-700',
-            drifted:    'bg-amber-500/20 text-amber-300 border-amber-500/50',
-            superseded: 'bg-gray-900 text-gray-500 border-gray-800 opacity-60 line-through-title',
-            blocked:    'bg-purple-500/20 text-purple-300 border-purple-500/50',
-            failed:     'bg-rose-500/20 text-rose-300 border-rose-500/50',
+            verified:   'bg-[#72D6B3]/15 text-[#72D6B3] border-[#72D6B3]/40 font-bold uppercase',
+            running:    'bg-cyan-500/15 text-cyan-300 border-cyan-500/40 font-bold uppercase animate-pulse',
+            pending:    'bg-[#101715] text-[#95A7A0] border-[#25352F] font-bold uppercase',
+            drifted:    'bg-amber-500/20 text-amber-300 border-amber-500/50 font-bold uppercase',
+            superseded: 'bg-[#101715] text-[#657871] border-[#202D28] opacity-60 line-through-title font-bold uppercase',
+            blocked:    'bg-amber-500/15 text-amber-300 border-amber-500/40 font-bold uppercase',
+            failed:     'bg-red-500/15 text-red-300 border-red-500/35 font-bold uppercase',
           };
-          const badgeStyle = badgeStyles[s.status] || 'bg-gray-800 text-gray-300 border-gray-700';
+          const badgeStyle = badgeStyles[s.status] || 'bg-[#101715] text-[#95A7A0] border-[#25352F] font-bold uppercase';
 
-          const modelHandled = s.result && s.result.model_used ? s.result.model_used : (s.status === 'verified' ? 'nvidia/nemotron-3-super-120b-a12b' : 'PLANNER');
+          const modelHandled = s.result && s.result.model_used ? s.result.model_used : (s.status === 'verified' ? 'System / Verifier' : 'PLANNER');
+
+          // Check for auto-healed drift event on this step
+          const healedDrift = driftEvents.find(d => d.step_id === s.id && d.auto_healed);
+          let autoHealedBadge = '';
+          if (healedDrift) {
+            const healedDate = new Date(healedDrift.healed_at || healedDrift.detected_at);
+            const timeStr = healedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            autoHealedBadge = `
+              <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#72D6B3]/10 border border-[#72D6B3]/35 text-[#72D6B3] text-xs font-medium">
+                <svg class="w-3.5 h-3.5 text-[#72D6B3]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                <span>Auto-healed at ${timeStr}</span>
+              </div>
+            `;
+          }
 
           return `
-            <div class="p-4 rounded-xl border bg-gray-900/40 border-gray-800 space-y-2.5">
-              <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="p-4 rounded-xl border bg-[#141C19] border-[#25352F] space-y-3 hover:border-[#2F423A] transition">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div class="flex items-center gap-2">
-                  <span class="text-xs font-mono font-bold text-gray-400 bg-gray-800 px-2 py-0.5 rounded">Seq ${s.seq}</span>
-                  <span class="text-xs font-mono text-gray-500">Idx ${s.idx}</span>
-                  <span class="text-xs font-bold uppercase px-2 py-0.5 rounded-full border ${badgeStyle}">${s.status}</span>
-                  <span class="text-xs font-semibold text-gray-300 font-mono bg-gray-800/60 px-2 py-0.5 rounded">${s.tool}</span>
+                  <span class="text-xs font-mono text-[#95A7A0]">Step ${s.idx || s.seq}</span>
+                  <span class="text-xs font-bold text-[#F2F5F2]">${s.intent}</span>
                 </div>
-                <div class="text-[11px] text-gray-500 font-mono">
-                  Model: <span class="text-gray-300">${modelHandled}</span>
+                <div class="flex items-center gap-2">
+                  ${autoHealedBadge}
+                  <span class="px-2.5 py-0.5 rounded text-[10px] tracking-wider border ${badgeStyle}">
+                    ${s.status}
+                  </span>
                 </div>
               </div>
 
-              <div class="text-sm font-semibold text-white">${s.intent}</div>
-
-              <!-- Blocked by Policy info -->
-              ${s.status === 'blocked' ? `
-                <div class="text-xs bg-purple-950/40 border border-purple-500/30 rounded-lg p-2.5 text-purple-200 font-mono flex items-center justify-between">
-                  <div>
-                    <span class="font-bold text-purple-400 uppercase text-[10px]">Blocked:</span> ${s.block_reason || 'Policy authorization required'}
+              <!-- Tool & Command/Payload context -->
+              <div class="bg-[#0E1513] rounded-lg p-3 border border-[#202E28] space-y-1.5 text-xs font-mono">
+                <div class="flex items-center justify-between text-[#95A7A0]">
+                  <span>Tool: <strong class="text-[#72D6B3] font-semibold">${s.tool}</strong></span>
+                  <span class="text-[10px] text-[#95A7A0] truncate max-w-[200px]" title="${modelHandled}">Model: ${modelHandled.split('/').pop()}</span>
+                </div>
+                ${s.args && Object.keys(s.args).length > 0 ? `
+                  <div class="text-[#E2E8E4] break-all text-[11px] bg-[#141C19] p-2.5 rounded border border-[#202E28]">
+                    ${JSON.stringify(s.args)}
                   </div>
-                  <button onclick="openApprovalsModal()" class="px-2 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-[11px] font-sans font-semibold">
-                    Review Approval
-                  </button>
-                </div>
-              ` : ''}
-
-              <!-- Drift Reason / Superseded / Resolved metadata -->
-              ${s.drift_reason ? `
-                <div class="text-xs bg-amber-950/40 border border-amber-500/30 rounded-lg p-2 text-amber-200 font-mono">
-                  <div class="font-bold text-[10px] text-amber-400 uppercase">Reality Drift:</div>
-                  ${s.drift_reason}
-                  ${s.resolved_by ? `<div class="text-[10px] text-emerald-400 mt-1">✔ Resolved by Step: ${s.resolved_by.substring(0,8)}...</div>` : ''}
-                </div>
-              ` : ''}
-
-              ${s.superseded_by ? `
-                <div class="text-xs bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-400 font-mono break-all">
-                  Superseded By: Step ${s.superseded_by.substring(0,8)}...
-                </div>
-              ` : ''}
-
-              <!-- Probe Info -->
-              <div class="text-[11px] text-gray-400 bg-gray-950/60 rounded-lg p-2.5 font-mono border border-gray-800/80 overflow-x-auto break-all">
-                <div class="text-gray-500 uppercase text-[10px] font-semibold mb-1">Deterministic Reality Probe:</div>
-                ${s.probe ? JSON.stringify(s.probe) : 'Awaiting reality audit...'}
+                ` : ''}
               </div>
+
+              <!-- Verification Probes & Outcomes -->
+              
+              ${s.tool === 'read_file' && s.result && typeof s.result.content === 'string' ? `
+                <div class="space-y-1.5 text-xs bg-[#0E1513] border border-[#202E28] rounded-lg p-3">
+                  <div class="flex items-center justify-between text-[#95A7A0] font-mono text-[11px]">
+                    <span class="text-[#72D6B3] font-semibold flex items-center gap-1.5">
+                      <svg class="w-3.5 h-3.5 text-[#72D6B3]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                      Read Content (${s.result.path || (s.args && s.args.path) || 'file'})
+                    </span>
+                    <span>${(s.result.bytes_read !== undefined ? s.result.bytes_read : s.result.content.length).toLocaleString()} bytes</span>
+                  </div>
+                  <pre class="text-[#F2F5F2] font-mono text-[11px] bg-[#0A110F] p-3 rounded-lg border border-[#22332D] whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">${s.result.content}</pre>
+                </div>
+              ` : ''}
+
+              ${s.status === 'verified' ? `
+                <div class="flex items-center gap-1.5 text-xs text-[#72D6B3] font-medium bg-[#72D6B3]/10 border border-[#72D6B3]/30 rounded-lg p-2.5">
+                  <svg class="w-4 h-4 text-[#72D6B3]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                  <span>Verified by physical reality probe${s.probe && s.probe.probe_type ? ' (' + s.probe.probe_type + ')' : ''}</span>
+                </div>
+              ` : ''}
+
+              ${s.status === 'drifted' ? `
+                <div class="space-y-1.5 text-xs bg-amber-950/20 border border-amber-500/40 rounded-lg p-2.5">
+                  <div class="flex items-center gap-1.5 text-amber-300 font-bold">
+                    <svg class="w-4 h-4 text-amber-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    <span>Probe Failed: ${s.drift_reason || 'Artifact missing or altered'}</span>
+                  </div>
+                  ${s.resolved_by ? `<div class="text-[11px] text-[#95A7A0]">Reconciled and replaced by step: <code class="text-[#72D6B3]">${s.resolved_by.substring(0,8)}</code></div>` : ''}
+                </div>
+              ` : ''}
+
+              ${s.status === 'blocked' ? `
+                <div class="flex items-center justify-between text-xs bg-amber-950/20 border border-amber-500/40 rounded-lg p-2.5 text-amber-300">
+                  <span>Blocked: ${s.block_reason || 'Requires manual approval'}</span>
+                  <button onclick="openApprovalsModal()" class="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-black rounded text-[10px] font-bold shadow-sm">Review</button>
+                </div>
+              ` : ''}
+
+              ${s.status === 'superseded' ? `
+                <div class="text-[11px] text-[#657871] italic bg-[#0E1513] rounded p-2 border border-[#202D28]">
+                  Superseded in append-only ledger by reconciliation step: <span class="font-mono text-[#95A7A0]">${s.superseded_by ? s.superseded_by.substring(0,8) : '--'}</span>
+                </div>
+              ` : ''}
             </div>
           `;
         }).join('');
-
       } catch (err) {
         console.error("Failed to load task detail:", err);
       }
@@ -660,7 +1941,7 @@
 
       const btn = document.getElementById("createTaskBtn");
       btn.disabled = true;
-      btn.innerText = "Planning...";
+      btn.innerHTML = `<span class="animate-spin inline-block mr-1">&bull;</span> Planning...`;
 
       try {
         const res = await sahaFetch("/tasks", {
@@ -670,18 +1951,18 @@
         });
         if (!res.ok) {
           const err = await res.json();
-          alert("Error: " + (err.detail || "Failed to create task"));
+          alert("Planning error: " + (err.detail || "Unable to plan task"));
           return;
         }
         const data = await res.json();
         input.value = "";
         await loadTasks();
-        selectTask(data.task.id);
+        selectTask(data.id);
       } catch (e) {
-        alert("Failed to create task: " + e);
+        alert("Failed to submit task: " + e);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Plan & Create`;
+        btn.innerHTML = `<span>Plan Task</span><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>`;
       }
     }
 
@@ -690,8 +1971,9 @@
       try {
         await sahaFetch(`/tasks/${activeTaskId}/run`, { method: "POST" });
         loadTaskDetail();
+        loadTasks();
       } catch (e) {
-        alert("Failed to run task: " + e);
+        alert("Run task failed: " + e);
       }
     }
 
@@ -699,11 +1981,14 @@
       if (!activeTaskId) return;
       try {
         const res = await sahaFetch(`/tasks/${activeTaskId}/sabotage`, { method: "POST" });
-        const data = await res.json();
-        alert(`Sabotage injected: Deleted physical file "${data.deleted_file}" directly from disk.\nLedger untouched: true.\nClick "Resume & Reconcile" to detect drift.`);
+        if (!res.ok) {
+          const err = await res.json();
+          alert("Simulation notice: " + (err.detail || "No artifacts available to sabotage yet."));
+          return;
+        }
         loadTaskDetail();
       } catch (e) {
-        alert("Sabotage failed: " + e);
+        alert("Drift simulation failed: " + e);
       }
     }
 
@@ -712,22 +1997,31 @@
       try {
         await sahaFetch(`/tasks/${activeTaskId}/resume`, { method: "POST" });
         loadTaskDetail();
+        loadTasks();
       } catch (e) {
-        alert("Failed to resume task: " + e);
+        alert("Resume failed: " + e);
       }
     }
 
-    // --- PAIR MODAL ---
+    async function resumeSpecificTask(taskId) {
+      try {
+        await sahaFetch(`/tasks/${taskId}/resume`, { method: "POST" });
+        loadTasks();
+        if (activeTaskId === taskId) loadTaskDetail();
+      } catch (e) {
+        alert("Resume failed: " + e);
+      }
+    }
+
+    // --- PAIRING MODAL (Preserves original functions) ---
     async function openPairModal() {
+      document.getElementById("pairModal").classList.remove("hidden");
       try {
         const res = await sahaFetch("/owner/pair-link", { method: "POST" });
         const data = await res.json();
-        const modal = document.getElementById("pairModal");
-        const input = document.getElementById("pairUrlInput");
-        input.value = data.pair_link || `${window.location.origin}/#pair=${getOwnerToken()}`;
-        modal.classList.remove("hidden");
+        document.getElementById("pairUrlInput").value = data.pair_link || data.pair_url;
       } catch (e) {
-        alert("Failed to generate pair link: " + e);
+        console.error("Pair link error:", e);
       }
     }
 
@@ -738,31 +2032,18 @@
     function copyPairUrl() {
       const input = document.getElementById("pairUrlInput");
       input.select();
+      input.setSelectionRange(0, 99999);
       navigator.clipboard.writeText(input.value);
       const btn = document.getElementById("copyPairBtn");
       btn.innerText = "Copied!";
-      setTimeout(() => btn.innerText = "Copy", 1500);
+      btn.classList.replace("bg-indigo-600", "bg-emerald-600");
+      setTimeout(() => {
+        btn.innerText = "Copy";
+        btn.classList.replace("bg-emerald-600", "bg-indigo-600");
+      }, 2000);
     }
 
-    // --- APPROVALS MODAL ---
-    async function checkPendingApprovals() {
-      try {
-        const res = await sahaFetch("/approvals");
-        if (!res.ok) return;
-        const data = await res.json();
-        const pending = (data.approvals || []).filter(a => a.status === 'pending');
-        const badge = document.getElementById("pendingApprovalsCount");
-        if (pending.length > 0) {
-          badge.innerText = pending.length;
-          badge.classList.remove("hidden");
-        } else {
-          badge.classList.add("hidden");
-        }
-      } catch (e) {
-        // silent
-      }
-    }
-
+    // --- APPROVALS MODAL (Preserves original functions) ---
     async function openApprovalsModal() {
       document.getElementById("approvalsModal").classList.remove("hidden");
       await loadApprovals();
@@ -770,6 +2051,24 @@
 
     function closeApprovalsModal() {
       document.getElementById("approvalsModal").classList.add("hidden");
+    }
+
+    async function checkPendingApprovals() {
+      try {
+        const res = await sahaFetch("/approvals?status=pending");
+        if (!res.ok) return;
+        const data = await res.json();
+        const count = (data.approvals || []).length;
+        const countBadge = document.getElementById("pendingApprovalsCount");
+        if (count > 0) {
+          countBadge.innerText = count;
+          countBadge.classList.remove("hidden");
+        } else {
+          countBadge.classList.add("hidden");
+        }
+      } catch (e) {
+        console.error("Failed to check pending approvals:", e);
+      }
     }
 
     async function loadApprovals() {
@@ -861,7 +2160,7 @@
       }
     }
 
-    // --- PRIVACY EGRESS MODAL ---
+    // --- PRIVACY EGRESS (Preserves original modal & table IDs) ---
     async function openEgressModal() {
       document.getElementById("egressModal").classList.remove("hidden");
       await loadEgress();
@@ -872,13 +2171,14 @@
     }
 
     async function loadEgress() {
-      const tbody = document.getElementById("egressTableBody");
+      const modalTbody = document.getElementById("egressTableBody");
+      const privacyTbody = document.getElementById("privacyEgressTableBody");
+
       try {
         const res = await sahaFetch("/egress");
         const data = await res.json();
         const logs = data.egress || [];
         
-        // Compute summary metrics
         let totalCalls = logs.length;
         let inChars = 0;
         let outChars = 0;
@@ -889,36 +2189,50 @@
           totalRedactions += (log.redaction_count || 0);
         }
 
-        document.getElementById("egressTotalCalls").innerText = totalCalls;
-        document.getElementById("egressTotalChars").innerText = `${inChars.toLocaleString()} / ${outChars.toLocaleString()}`;
-        document.getElementById("egressTotalRedactions").innerText = totalRedactions;
+        // Update modal metrics
+        const totalCallsEl = document.getElementById("egressTotalCalls");
+        if (totalCallsEl) totalCallsEl.innerText = totalCalls;
+        const totalCharsEl = document.getElementById("egressTotalChars");
+        if (totalCharsEl) totalCharsEl.innerText = `${inChars.toLocaleString()} / ${outChars.toLocaleString()}`;
+        const totalRedactionsEl = document.getElementById("egressTotalRedactions");
+        if (totalRedactionsEl) totalRedactionsEl.innerText = totalRedactions;
 
-        if (logs.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-gray-500">No outbound model calls logged yet.</td></tr>`;
-          return;
-        }
+        // Update privacy view metrics
+        const privCallsEl = document.getElementById("privacyEgressCalls");
+        if (privCallsEl) privCallsEl.innerText = totalCalls;
+        const privCharsEl = document.getElementById("privacyEgressChars");
+        if (privCharsEl) privCharsEl.innerText = `${inChars.toLocaleString()} / ${outChars.toLocaleString()}`;
+        const privRedactEl = document.getElementById("privacyEgressRedactions");
+        if (privRedactEl) privRedactEl.innerText = totalRedactions;
 
-        tbody.innerHTML = logs.map(l => {
-          const tagsStr = Array.isArray(l.tags) ? l.tags.join(', ') : (l.tags || '--');
-          return `
-            <tr class="hover:bg-gray-800/40">
-              <td class="p-2.5 text-gray-400 whitespace-nowrap">${new Date(l.created_at).toLocaleTimeString()}</td>
-              <td class="p-2.5 font-bold text-gray-300">${l.role}</td>
-              <td class="p-2.5 text-gray-400 max-w-[140px] truncate" title="${l.model}">${l.model}</td>
-              <td class="p-2.5 text-gray-400 max-w-[160px] truncate" title="${tagsStr}">${tagsStr}</td>
-              <td class="p-2.5 text-right font-medium text-emerald-400">${(l.input_chars || 0).toLocaleString()} / ${(l.output_chars || 0).toLocaleString()}</td>
-              <td class="p-2.5 text-right font-medium ${l.redaction_count > 0 ? 'text-amber-400' : 'text-gray-500'}">${l.redaction_count || 0}</td>
-            </tr>
-          `;
-        }).join('');
+        const renderRows = (logs.length === 0)
+          ? `<tr><td colspan="6" class="p-6 text-center text-gray-500">No outbound model calls logged yet.</td></tr>`
+          : logs.map(l => {
+              const tagsStr = Array.isArray(l.tags) ? l.tags.join(', ') : (l.tags || '--');
+              return `
+                <tr class="hover:bg-gray-800/40">
+                  <td class="p-2.5 text-gray-400 whitespace-nowrap">${new Date(l.created_at).toLocaleTimeString()}</td>
+                  <td class="p-2.5 font-bold text-gray-300">${l.role}</td>
+                  <td class="p-2.5 text-gray-400 max-w-[140px] truncate" title="${l.model}">${l.model}</td>
+                  <td class="p-2.5 text-gray-400 max-w-[160px] truncate" title="${tagsStr}">${tagsStr}</td>
+                  <td class="p-2.5 text-right font-medium text-emerald-400">${(l.input_chars || 0).toLocaleString()} / ${(l.output_chars || 0).toLocaleString()}</td>
+                  <td class="p-2.5 text-right font-medium ${l.redaction_count > 0 ? 'text-amber-400' : 'text-gray-500'}">${l.redaction_count || 0}</td>
+                </tr>
+              `;
+            }).join('');
+
+        if (modalTbody) modalTbody.innerHTML = renderRows;
+        if (privacyTbody) privacyTbody.innerHTML = renderRows;
       } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-rose-400">Failed to load egress ledger: ${e}</td></tr>`;
+        const errRow = `<tr><td colspan="6" class="p-4 text-center text-rose-400">Failed to load egress ledger: ${e}</td></tr>`;
+        if (modalTbody) modalTbody.innerHTML = errRow;
+        if (privacyTbody) privacyTbody.innerHTML = errRow;
       }
     }
 
     // --- RESET SPACE ---
     async function confirmDeleteSpace() {
-      if (!confirm("Are you sure you want to RESET this private space?\n\nThis will permanently delete all tasks, files, execution history, approvals, and logs associated with your bearer token.")) {
+      if (!confirm("Are you sure you want to RESET this private space?\n\nThis will permanently delete all tasks, files, memories, routines, approvals, and privacy logs associated with your bearer token.")) {
         return;
       }
       try {
@@ -929,6 +2243,7 @@
           return;
         }
         localStorage.removeItem("saha_owner_token");
+        localStorage.removeItem("saha_is_paired");
         cachedOwnerToken = null;
         alert("Private space deleted. Generating a fresh bearer token.");
         window.location.reload();
@@ -937,31 +2252,48 @@
       }
     }
 
-    function refreshData() {
-      loadTasks();
-      if (activeTaskId) {
-        loadTaskDetail();
-      }
-      checkPendingApprovals();
-    }
-
-    // Auto-polling & initialization
+    // --- AUTO-POLLING & INITIALIZATION ---
     window.addEventListener("DOMContentLoaded", () => {
       getOwnerToken();
       checkHealth();
       loadTasks();
       checkPendingApprovals();
+      loadWatcherStatus();
 
+      // Check URL query parameters for section and task deep linking
+      const urlParams = new URLSearchParams(window.location.search);
+      const reqSection = urlParams.get("section");
+      if (reqSection && ['tasks', 'activity', 'memory', 'routines', 'privacy'].includes(reqSection)) {
+        switchSection(reqSection);
+      } else if (window.location.hash) {
+        const hashSection = window.location.hash.replace("#", "").toLowerCase();
+        if (['tasks', 'activity', 'memory', 'routines', 'privacy'].includes(hashSection)) {
+          switchSection(hashSection);
+        }
+      }
+
+      // Fast polling for active task
       setInterval(() => {
-        if (activeTaskId) {
+        if (currentSection === 'tasks' && activeTaskId) {
           loadTaskDetail();
         }
       }, 1000);
 
+      // Tasks and approvals regular poll
       setInterval(() => {
-        loadTasks();
+        if (currentSection === 'tasks') {
+          loadTasks();
+        }
         checkPendingApprovals();
       }, 3500);
+
+      // Activity poll every ~5s while visible
+      setInterval(() => {
+        loadWatcherStatus();
+        if (currentSection === 'activity' && document.visibilityState === 'visible') {
+          loadActivity();
+        }
+      }, 5000);
     });
   </script>
 </body>
