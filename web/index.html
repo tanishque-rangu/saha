@@ -296,6 +296,31 @@
               </p>
             </div>
 
+            
+            <!-- Task Output Panel (Show text produced by read_file in completed task) -->
+            <div id="taskOutputPanel" class="hidden rounded-xl border border-emerald-500/40 bg-gray-950/90 p-4 space-y-3 glow-emerald">
+              <div class="flex items-center justify-between pb-2 border-b border-gray-800/80">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+                  <span class="text-xs font-bold uppercase tracking-wider text-emerald-400 font-display">Task Output</span>
+                  <span id="taskOutputPathBadge" class="text-[11px] font-mono text-gray-300 bg-gray-900 px-2 py-0.5 rounded border border-gray-800">--</span>
+                </div>
+                <button onclick="copyTaskOutput()" id="copyTaskOutputBtn" class="px-2.5 py-1 bg-gray-900 hover:bg-gray-800 border border-gray-700 text-gray-300 hover:text-white rounded-lg text-xs font-mono transition flex items-center gap-1.5 shadow-sm">
+                  <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+                  <span>Copy</span>
+                </button>
+              </div>
+
+              <!-- Output Content Pre -->
+              <pre id="taskOutputContent" class="text-xs font-mono text-gray-100 bg-gray-900/90 p-3.5 rounded-lg border border-gray-800/90 overflow-x-auto whitespace-pre-wrap max-h-80 leading-relaxed selection:bg-emerald-500 selection:text-black">--</pre>
+
+              <!-- Footer with step context and bytes read -->
+              <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-gray-500 pt-1">
+                <span id="taskOutputStepLabel">Output from read_file step</span>
+                <span id="taskOutputBytesLabel">0 bytes read</span>
+              </div>
+            </div>
+
             <!-- Steps Timeline -->
             <div class="space-y-3">
               <div class="flex items-center justify-between">
@@ -891,6 +916,24 @@
       } else if (sectionId === 'tasks') {
         loadTasks();
         if (activeTaskId) loadTaskDetail();
+      }
+    }
+
+    
+    function copyTaskOutput() {
+      const contentEl = document.getElementById("taskOutputContent");
+      if (!contentEl) return;
+      const text = contentEl.innerText;
+      navigator.clipboard.writeText(text);
+      const btn = document.getElementById("copyTaskOutputBtn");
+      if (btn) {
+        const origHtml = btn.innerHTML;
+        btn.innerText = "Copied!";
+        btn.classList.replace("text-gray-300", "text-emerald-400");
+        setTimeout(() => {
+          btn.innerHTML = origHtml;
+          btn.classList.replace("text-emerald-400", "text-gray-300");
+        }, 2000);
       }
     }
 
@@ -1699,6 +1742,47 @@
           blockedAlert.classList.add("hidden");
         }
 
+        
+        // Task Output Panel: Show actual text produced by read_file step in completed task
+        const outputPanel = document.getElementById("taskOutputPanel");
+        if (outputPanel) {
+          const isComplete = task.status === 'complete' || data.is_complete;
+          const readSteps = steps.filter(s => 
+            s.tool === 'read_file' && 
+            s.status !== 'superseded' && 
+            s.result && 
+            typeof s.result.content === 'string'
+          );
+
+          if (isComplete && readSteps.length > 0) {
+            outputPanel.classList.remove("hidden");
+            if (readSteps.length === 1) {
+              const primary = readSteps[0];
+              const path = primary.result.path || (primary.args && primary.args.path) || 'file';
+              const text = primary.result.content || '(Empty file)';
+              const bytes = primary.result.bytes_read !== undefined ? primary.result.bytes_read : text.length;
+
+              document.getElementById("taskOutputPathBadge").innerText = path;
+              document.getElementById("taskOutputContent").innerText = text;
+              document.getElementById("taskOutputStepLabel").innerText = `Output from Step ${primary.idx || primary.seq}: ${primary.intent || 'Read file'}`;
+              document.getElementById("taskOutputBytesLabel").innerText = `${bytes.toLocaleString()} bytes read`;
+            } else {
+              const combinedText = readSteps.map(s => {
+                const path = s.result.path || (s.args && s.args.path) || 'file';
+                return `=== ${path} (Step ${s.idx || s.seq}: ${s.intent || 'Read file'}) ===\n${s.result.content}`;
+              }).join('\n\n');
+              const totalBytes = readSteps.reduce((acc, s) => acc + (s.result.bytes_read !== undefined ? s.result.bytes_read : (s.result.content || '').length), 0);
+
+              document.getElementById("taskOutputPathBadge").innerText = `${readSteps.length} files`;
+              document.getElementById("taskOutputContent").innerText = combinedText;
+              document.getElementById("taskOutputStepLabel").innerText = `${readSteps.length} read_file steps executed`;
+              document.getElementById("taskOutputBytesLabel").innerText = `${totalBytes.toLocaleString()} bytes total`;
+            }
+          } else {
+            outputPanel.classList.add("hidden");
+          }
+        }
+
         document.getElementById("timelineStats").innerText = `${steps.length} steps recorded in append-only ledger`;
 
         // Render Steps Timeline
@@ -1760,6 +1844,20 @@
               </div>
 
               <!-- Verification Probes & Outcomes -->
+              
+              ${s.tool === 'read_file' && s.result && typeof s.result.content === 'string' ? `
+                <div class="space-y-1.5 text-xs bg-gray-950/80 border border-gray-800 rounded-lg p-2.5">
+                  <div class="flex items-center justify-between text-gray-400 font-mono text-[11px]">
+                    <span class="text-emerald-400 font-semibold flex items-center gap-1.5">
+                      <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                      Read Content (${s.result.path || (s.args && s.args.path) || 'file'})
+                    </span>
+                    <span>${(s.result.bytes_read !== undefined ? s.result.bytes_read : s.result.content.length).toLocaleString()} bytes</span>
+                  </div>
+                  <pre class="text-gray-200 font-mono text-[11px] bg-gray-900/90 p-2.5 rounded border border-gray-800/80 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">${s.result.content}</pre>
+                </div>
+              ` : ''}
+
               ${s.status === 'verified' ? `
                 <div class="flex items-center gap-1.5 text-xs text-emerald-400 font-medium bg-emerald-950/20 border border-emerald-500/20 rounded-lg p-2">
                   <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
